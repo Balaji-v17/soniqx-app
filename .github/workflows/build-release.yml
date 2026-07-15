@@ -26,14 +26,24 @@ jobs:
           flutter-version: '3.44.3'
           channel: 'stable'
 
-      - name: Install Dependencies
+     - name: Install Dependencies
         run: flutter pub get
 
+      - name: Decode Keystore
+        env:
+          ENCODED_STRING: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          echo $ENCODED_STRING | base64 --decode > android/app/upload-keystore.jks
+
       - name: Build Release APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          ALIAS: ${{ secrets.ALIAS }}
         run: flutter build apk --release
 
       - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4  # <-- Updated to v4
+        uses: actions/upload-artifact@v4
         with:
           name: soniq-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk

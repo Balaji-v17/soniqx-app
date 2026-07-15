@@ -10,9 +10,6 @@ plugins {
 }
 
 // ── android{} block ──────────────────────────────────────────
-// NOTE: kotlin{} is NOT nested inside android{} — it is a
-// separate top-level block below. Nesting it here causes
-// cascading "Unexpected symbol" parse errors in Kotlin DSL.
 android {
     namespace  = "com.soniq.music"
     compileSdk = 36
@@ -27,9 +24,6 @@ android {
     defaultConfig {
         applicationId = "com.soniq.music"
         minSdk        = 24
-        // targetSdk lives here in defaultConfig{}, NOT at the
-        // top level of android{}. Top-level targetSdk is not a
-        // valid property in AGP 8.x Kotlin DSL.
         targetSdk     = 35
         versionCode   = flutter.versionCode
         versionName   = flutter.versionName
@@ -43,15 +37,14 @@ android {
             keyAlias      = "androiddebugkey"
             keyPassword   = "android"
         }
-        // Uncomment before Play Store submission:
-        // create("release") {
-        //     val props = java.util.Properties()
-        //     file("../../key.properties").inputStream().use { props.load(it) }
-        //     keyAlias      = props["keyAlias"] as String
-        //     keyPassword   = props["keyPassword"] as String
-        //     storeFile     = file(props["storeFile"] as String)
-        //     storePassword = props["storePassword"] as String
-        // }
+        
+        // This pulls your secure passwords from GitHub Actions
+        create("release") {
+            storeFile = file("upload-keystore.jks")
+            storePassword = System.getenv("KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("ALIAS")
+            keyPassword = System.getenv("KEY_PASSWORD")
+        }
     }
 
     buildTypes {
@@ -62,8 +55,8 @@ android {
             versionNameSuffix   = "-debug"
         }
         release {
-            // Change to getByName("release") before Play Store
-            signingConfig = signingConfigs.getByName("debug")
+            // Now correctly pointing to the "release" block above
+            signingConfig = signingConfigs.getByName("release")
             manifestPlaceholders["crashlyticsEnabled"] = "true"
             isMinifyEnabled   = true
             isShrinkResources = true
@@ -101,8 +94,6 @@ android {
 }
 
 // ── Kotlin compiler options (TOP LEVEL — outside android{}) ──
-// kotlinOptions{} is deprecated in Kotlin 2.x.
-// kotlin{} must be a top-level block, not nested inside android{}.
 kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
