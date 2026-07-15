@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "927524746289",
+    "project_id": "soniq-a11ed",
+    "storage_bucket": "soniq-a11ed.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:927524746289:android:ae152f680af03377af9110",
+        "android_client_info": {
+          "package_name": "com.example.soniq"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCyohaUObxHobvq9quHntvdHqDSkxF-vFU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

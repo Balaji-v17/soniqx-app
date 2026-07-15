@@ -1,0 +1,20 @@
+{
+  "artists": {
+    "Kailash Kher": {
+      "Hindi": 1.0
+    },
+    "Sanjith Hegde": {
+      "Kannada": 1.0
+    },
+    "Yuvan Shankar Raja": {
+      "Tamil": 1.0
+    },
+    "Thaman S": {
+      "Telugu": 0.8,
+      "Tamil": 0.2
+    },
+    "Shashwat Sachdev": {
+      "Hindi": 1.0
+    }
+  }
+}
