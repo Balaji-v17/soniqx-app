@@ -29,10 +29,6 @@ class _RootScreenState extends ConsumerState<RootScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // 🎯 THEME ACCESSOR: This reacts instantly to main.dart's themeMode changes
-    final colorScheme = Theme.of(context).colorScheme;
-    final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
-
     return PopScope(
       canPop: false, 
       onPopInvoked: (didPop) {
@@ -41,9 +37,9 @@ class _RootScreenState extends ConsumerState<RootScreen> {
           setState(() => _currentIndex = 0);
         }
       },
+      // 🎯 REMOVED: scaffoldBg override. The Scaffold automatically 
+      // pulls the correct background color from main.dart!
       child: Scaffold(
-        backgroundColor: scaffoldBg, 
-        
         body: Stack(
           children: [
             Padding(
@@ -63,14 +59,13 @@ class _RootScreenState extends ConsumerState<RootScreen> {
           ],
         ),
 
-        // 🎯 DYNAMIC NAVIGATION BAR: Uses the theme's color scheme
+        // 🎯 DYNAMIC NAVIGATION BAR: All manual color overrides removed.
+        // It now perfectly inherits the styles defined in main.dart's NavigationBarThemeData.
         bottomNavigationBar: NavigationBar(
           selectedIndex: _currentIndex,
           onDestinationSelected: (index) {
             setState(() => _currentIndex = index);
           },
-          backgroundColor: scaffoldBg, // Responsive to light/dark
-          indicatorColor: colorScheme.primary.withOpacity(0.2),
           destinations: const [
             NavigationDestination(
               icon: Icon(Icons.library_music_outlined),

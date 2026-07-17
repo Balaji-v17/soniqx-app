@@ -5,10 +5,12 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
+import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'artwork_extractor.dart';
 
@@ -38,6 +40,7 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler, QueueHandler 
   double _playbackSpeed = 1.0;
   bool   _currentSongCounted = false;
   int?   _currentSongId;
+  Duration? _lastPosition; // 🎯 ADDED: Tracks position to detect Repeat-One loops
 
   // ConcatenatingAudioSource is bound to _player once in _init().
   // All queue mutations go through this object — never replace it.
@@ -50,32 +53,50 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler, QueueHandler 
   // ─── Initialization ────────────────────────────────────────
 
   Future<void> _init() async {
-    final session = await AudioSession.instance;
-    await session.configure(const AudioSessionConfiguration.music());
-    print("Audio Session Active: ${await session.setActive(true)}");
-    await _player.setAudioSource(_playlist);
+    try {
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration.music());
+      print("Audio Session Active: ${await session.setActive(true)}");
+      await _player.setAudioSource(_playlist);
 
-    _subs.addAll([
-      session.interruptionEventStream.listen(_handleInterruption),
-      session.becomingNoisyEventStream.listen((_) => pause()),
-      // Bulletproof stream mapping to fix the void Function casting error
-      _player.playbackEventStream.map((event) => _transformEvent(event)).listen((state) => playbackState.add(state)),
-      _player.currentIndexStream.listen(_onSongIndexChanged),
-      _player.positionStream.listen(_onPositionChanged),
-    ]);
+      _subs.addAll([
+        session.interruptionEventStream.listen(_handleInterruption),
+        session.becomingNoisyEventStream.listen((_) => pause()),
+        // 🎯 FIXED: Added onError callback to prevent stream crashes from blocking the engine
+        _player.playbackEventStream
+            .map((event) => _transformEvent(event))
+            .listen(
+              (state) => playbackState.add(state),
+              onError: (Object e, StackTrace st) {
+                print("🚨 Playback Stream Error: $e");
+              },
+            ),
+        _player.currentIndexStream.listen(_onSongIndexChanged),
+        _player.positionStream.listen(_onPositionChanged),
+      ]);
 
-    _saveTimer = Timer.periodic(
-      const Duration(seconds: 5),
-      (_) => _saveQueueState(),
-    );
+      _saveTimer = Timer.periodic(
+        const Duration(seconds: 5),
+        (_) => _saveQueueState(),
+      );
 
-    await _restoreQueueState();
+      await _restoreQueueState();
+    } catch (e) {
+      print("🚨 Error during SoniqAudioHandler init: $e");
+    }
   }
 
   // ─── Core Controls ─────────────────────────────────────────
 
   @override
-  Future<void> play() => _player.play();
+  Future<void> play() async {
+    try {
+      // just_audio's play() Future completes when the song ends, not starts.
+      _player.play(); 
+    } catch (e) {
+      print("🚨 Playback failed: $e");
+    }
+  }
 
   @override
   Future<void> pause() async {
@@ -96,8 +117,12 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler, QueueHandler 
   @override
   Future<void> skipToQueueItem(int index) async {
     if (index < 0 || index >= queue.value.length) return;
-    await _player.seek(Duration.zero, index: index);
-    await _player.play();
+    try {
+      await _player.seek(Duration.zero, index: index);
+      await play();
+    } catch (e) {
+      print("🚨 Skip failed: $e");
+    }
   }
 
   @override
@@ -143,17 +168,14 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler, QueueHandler 
 
   @override
   Future<void> skipToNext() async {
-    final seq = _player.sequence;
-    final idx = _player.currentIndex;
-    if (seq == null || idx == null || idx >= seq.length - 1) return;
+    // 🎯 FIXED: Let just_audio handle the bounds. This allows wrap-around for LoopMode.all.
     await _player.seekToNext();
     _updateCurrentMediaItem();
   }
 
   @override
   Future<void> skipToPrevious() async {
-    final idx = _player.currentIndex;
-    if (idx == null || idx <= 0) return;
+    // 🎯 FIXED: Allow just_audio to handle backward wrapping if LoopMode.all is active.
     if (_player.position.inSeconds > 3) {
       await _player.seek(Duration.zero);
     } else {
@@ -235,7 +257,6 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler, QueueHandler 
 
       await updateQueue(valid);
 
-      // Added .toInt() to fix the num type cast error
       final index = state.currentIndex.clamp(0, valid.length - 1).toInt();
       final position = Duration(milliseconds: state.positionMs);
       await _player.seek(position, index: index);
@@ -251,7 +272,7 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler, QueueHandler 
         mediaItem.add(valid[index]);
       }
     } catch (e) {
-      // Corrupted state — start fresh
+      // Corrupted state — start fresh gracefully
     }
   }
 
@@ -277,7 +298,7 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler, QueueHandler 
         case AudioInterruptionType.pause:
         case AudioInterruptionType.unknown:
           if (_wasPlayingBeforeInterruption) {
-            _player.play();
+            play();
             _wasPlayingBeforeInterruption = false;
           }
           break;
@@ -290,6 +311,7 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler, QueueHandler 
 
     _currentSongCounted = false;
     _currentSongId = null;
+    _lastPosition = null; // 🎯 FIXED: Reset position tracker for new song
 
     var item = queue.value[index];
     _currentSongId = int.tryParse(item.id);
@@ -310,7 +332,15 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler, QueueHandler 
   }
 
   Future<void> _onPositionChanged(Duration position) async {
-    if (_currentSongId == null || _currentSongCounted) return;
+    if (_currentSongId == null) return;
+
+    // 🎯 FIXED: Detect if a song on Repeat-One has restarted and reset the history counter
+    if (_lastPosition != null && position.inMilliseconds < _lastPosition!.inMilliseconds && position.inSeconds < 1) {
+      _currentSongCounted = false;
+    }
+    _lastPosition = position;
+
+    if (_currentSongCounted) return;
 
     final tag = _player.sequenceState?.currentSource?.tag;
     final duration = (tag is MediaItem) ? tag.duration : null;
@@ -333,7 +363,6 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler, QueueHandler 
 
   // ─── Audio Effects ─────────────────────────────────────────
 
-  // 🎯 FIXED: Properly closed the bracket for setSpeed!
   @override
   Future<void> setSpeed(double speed) async { 
     _playbackSpeed = speed;
@@ -364,7 +393,7 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler, QueueHandler 
         ProcessingState.buffering: AudioProcessingState.buffering,
         ProcessingState.ready:     AudioProcessingState.ready,
         ProcessingState.completed: AudioProcessingState.completed,
-      }[_player.processingState]!,
+      }[_player.processingState] ?? AudioProcessingState.idle,
       playing:           _player.playing,
       updatePosition:    _player.position,
       bufferedPosition:  _player.bufferedPosition,
@@ -374,7 +403,7 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler, QueueHandler 
         LoopMode.off: AudioServiceRepeatMode.none,
         LoopMode.one: AudioServiceRepeatMode.one,
         LoopMode.all: AudioServiceRepeatMode.all,
-      }[_player.loopMode]!,
+      }[_player.loopMode] ?? AudioServiceRepeatMode.none,
       shuffleMode: _player.shuffleModeEnabled
           ? AudioServiceShuffleMode.all
           : AudioServiceShuffleMode.none,
@@ -408,10 +437,10 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler, QueueHandler 
     try {
       final list = jsonDecode(json) as List<dynamic>;
       return list.map((map) => MediaItem(
-        id:       map['id']?.toString() ?? '',
-        title:    map['title']?.toString() ?? 'Unknown',
-        artist:   map['artist']?.toString(),
-        album:    map['album']?.toString(),
+        id:        map['id']?.toString() ?? '',
+        title:     map['title']?.toString() ?? 'Unknown',
+        artist:    map['artist']?.toString(),
+        album:     map['album']?.toString(),
         duration: map['duration'] != null
             ? Duration(milliseconds: map['duration'] as int)
             : null,

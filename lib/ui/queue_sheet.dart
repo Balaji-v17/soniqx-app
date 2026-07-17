@@ -93,13 +93,10 @@ class QueueSheet extends ConsumerWidget {
                             tileColor: isPlaying ? textColor.withOpacity(0.05) : Colors.transparent,
                             leading: ClipRRect(
                               borderRadius: BorderRadius.circular(6),
-                              child: item.artUri != null
-                                  ? Image.file(File(item.artUri!.toFilePath()), width: 48, height: 48, fit: BoxFit.cover)
-                                  : Container(
-                                      width: 48, height: 48,
-                                      color: isDark ? const Color(0xFF2A2A2A) : Colors.grey.shade200,
-                                      child: const Icon(Icons.music_note_rounded, color: Color(0xFF6366F1)),
-                                    ),
+                             child: item.artUri != null
+    ? Image.file(File(item.artUri!.toFilePath()), width: 48, height: 48, fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => const FallbackAlbumArt(width: 48, height: 48, borderRadius: 8.0))
+    : const FallbackAlbumArt(width: 48, height: 48, borderRadius: 8.0),
                             ),
                             title: Text(
                               item.title,

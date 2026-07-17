@@ -15,22 +15,25 @@ class PlaylistsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final db = ref.watch(databaseProvider);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      // 🎯 REMOVED: Colors.transparent. Automatically uses the theme's background.
       body: CustomScrollView(
         slivers: [
           // 1. Premium App Bar
           SliverAppBar(
-            backgroundColor: const Color(0xFF0A0A0A).withOpacity(0.9),
+            // 🎯 DYNAMIC: Matches background but keeps the opacity effect
+            backgroundColor: theme.scaffoldBackgroundColor.withOpacity(0.9),
             pinned: true,
             expandedHeight: 120.0,
-            flexibleSpace: const FlexibleSpaceBar(
-              titlePadding: EdgeInsets.only(left: 24, bottom: 16),
+            flexibleSpace: FlexibleSpaceBar(
+              titlePadding: const EdgeInsets.only(left: 24, bottom: 16),
               title: Text(
                 'Playlists',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: colorScheme.onBackground, // 🎯 DYNAMIC
                   fontWeight: FontWeight.w700,
                   letterSpacing: -0.5,
                 ),
@@ -38,7 +41,7 @@ class PlaylistsScreen extends ConsumerWidget {
             ),
             actions: [
               IconButton(
-                icon: const Icon(Icons.add_rounded, color: Colors.white),
+                icon: Icon(Icons.add_rounded, color: colorScheme.onBackground), // 🎯 DYNAMIC
                 onPressed: () => _showCreatePlaylistDialog(context, db),
               ),
               const SizedBox(width: 8),
@@ -52,10 +55,10 @@ class PlaylistsScreen extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Made for you',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: colorScheme.onBackground, // 🎯 DYNAMIC
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
                     ),
@@ -102,7 +105,7 @@ class PlaylistsScreen extends ConsumerWidget {
               child: Text(
                 'My Collections',
                 style: TextStyle(
-                  color: Colors.white.withOpacity(0.9),
+                  color: colorScheme.onBackground.withOpacity(0.9), // 🎯 DYNAMIC
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
                 ),
@@ -117,11 +120,14 @@ class PlaylistsScreen extends ConsumerWidget {
               final playlists = snapshot.data ?? [];
 
               if (playlists.isEmpty) {
-                return const SliverToBoxAdapter(
+                return SliverToBoxAdapter(
                   child: Center(
                     child: Padding(
-                      padding: EdgeInsets.symmetric(vertical: 40.0),
-                      child: Text('No playlists created yet.', style: TextStyle(color: Colors.white38)),
+                      padding: const EdgeInsets.symmetric(vertical: 40.0),
+                      child: Text(
+                        'No playlists created yet.', 
+                        style: TextStyle(color: colorScheme.onBackground.withOpacity(0.5)) // 🎯 DYNAMIC
+                      ),
                     ),
                   ),
                 );
@@ -137,34 +143,38 @@ class PlaylistsScreen extends ConsumerWidget {
                         width: 56,
                         height: 56,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF1A1A2E),
+                          // 🎯 DYNAMIC: Adapts nicely in both themes using primary color with low opacity
+                          color: colorScheme.primary.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(8.0),
                         ),
-                        child: const Icon(Icons.queue_music_rounded, color: Color(0xFF818CF8)),
+                        child: Icon(Icons.queue_music_rounded, color: colorScheme.primary),
                       ),
                       title: Text(
                         playlist.name,
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500, fontSize: 16),
+                        style: TextStyle(
+                          color: colorScheme.onBackground, // 🎯 DYNAMIC
+                          fontWeight: FontWeight.w500, 
+                          fontSize: 16
+                        ),
                       ),
                       
-                      // 🎯 FIXED: Added the delete button with a confirmation dialog
                       trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline_rounded, color: Colors.white38),
+                        icon: Icon(Icons.delete_outline_rounded, color: colorScheme.onBackground.withOpacity(0.4)), // 🎯 DYNAMIC
                         onPressed: () async {
                           final confirm = await showDialog<bool>(
                             context: context,
                             builder: (context) => AlertDialog(
-                              backgroundColor: const Color(0xFF1E1E1E),
+                              backgroundColor: colorScheme.surface, // 🎯 DYNAMIC
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                              title: const Text('Delete Playlist?', style: TextStyle(color: Colors.white)),
+                              title: Text('Delete Playlist?', style: TextStyle(color: colorScheme.onSurface)), // 🎯 DYNAMIC
                               content: Text(
                                 'Are you sure you want to delete "${playlist.name}"? Your songs will remain safely in your library.', 
-                                style: const TextStyle(color: Colors.white70)
+                                style: TextStyle(color: colorScheme.onSurface.withOpacity(0.7)) // 🎯 DYNAMIC
                               ),
                               actions: [
                                 TextButton(
                                   onPressed: () => Navigator.pop(context, false),
-                                  child: const Text('CANCEL', style: TextStyle(color: Colors.white54)),
+                                  child: Text('CANCEL', style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6))), // 🎯 DYNAMIC
                                 ),
                                 TextButton(
                                   onPressed: () => Navigator.pop(context, true),
@@ -204,30 +214,32 @@ class PlaylistsScreen extends ConsumerWidget {
   }
 
   void _showCreatePlaylistDialog(BuildContext context, AppDatabase db) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
     final controller = TextEditingController();
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A2E),
-        title: const Text('New Playlist', style: TextStyle(color: Colors.white)),
+        backgroundColor: colorScheme.surface, // 🎯 DYNAMIC
+        title: Text('New Playlist', style: TextStyle(color: colorScheme.onSurface)), // 🎯 DYNAMIC
         content: TextField(
           controller: controller,
           autofocus: true,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
+          style: TextStyle(color: colorScheme.onSurface), // 🎯 DYNAMIC
+          decoration: InputDecoration(
             hintText: 'Playlist Name', 
-            hintStyle: TextStyle(color: Colors.white24),
-            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF6366F1))),
-            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF818CF8))),
+            hintStyle: TextStyle(color: colorScheme.onSurface.withOpacity(0.3)), // 🎯 DYNAMIC
+            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: colorScheme.primary)),
+            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: colorScheme.primary, width: 2)),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context), 
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            child: Text('Cancel', style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6))), // 🎯 DYNAMIC
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6366F1)),
+            style: ElevatedButton.styleFrom(backgroundColor: colorScheme.primary),
             onPressed: () async {
               if (controller.text.isNotEmpty) {
                 await db.playlistsDao.createPlaylist(controller.text);
@@ -275,6 +287,7 @@ class _GradientPlaylistCard extends StatelessWidget {
           children: [
             Text(
               subtitle,
+              // 💡 Note: Text on solid gradients stays white regardless of theme mode.
               style: TextStyle(
                 color: Colors.white.withOpacity(0.8),
                 fontSize: 10,
@@ -307,12 +320,14 @@ class _RealLibraryStatsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 20.0),
       decoration: BoxDecoration(
-        color: const Color(0xFF13141F),
+        color: colorScheme.surface, // 🎯 DYNAMIC
         borderRadius: BorderRadius.circular(16.0),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: colorScheme.onSurface.withOpacity(0.05)), // 🎯 DYNAMIC
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -336,6 +351,8 @@ class _StatStream extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
     return StreamBuilder<int>(
       stream: stream,
       builder: (context, snapshot) {
@@ -343,12 +360,21 @@ class _StatStream extends StatelessWidget {
           children: [
             Text(
               '${snapshot.data ?? 0}', 
-              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: colorScheme.onSurface, // 🎯 DYNAMIC
+                fontSize: 18, 
+                fontWeight: FontWeight.bold
+              ),
             ),
             const SizedBox(height: 4),
             Text(
               label, 
-              style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 10, letterSpacing: 1.0, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                color: colorScheme.onSurface.withOpacity(0.4), // 🎯 DYNAMIC
+                fontSize: 10, 
+                letterSpacing: 1.0, 
+                fontWeight: FontWeight.w600
+              ),
             ),
           ],
         );
@@ -365,7 +391,7 @@ class _Divider extends StatelessWidget {
     return Container(
       height: 30,
       width: 1,
-      color: Colors.white.withOpacity(0.1),
+      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.1), // 🎯 DYNAMIC
     );
   }
 }

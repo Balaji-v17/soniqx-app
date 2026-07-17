@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:soniq/providers.dart';
+import 'package:soniq/ui/widgets/fallback_album_art.dart'; // 🎯 IMPORTED: Your new 3D default asset widget
 import '../sheets/full_player_sheet.dart';
 
 class MiniPlayer extends ConsumerWidget {
@@ -17,6 +18,9 @@ class MiniPlayer extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final audioHandler = ref.watch(audioHandlerProvider);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
 
     return StreamBuilder<MediaItem?>(
       stream: audioHandler.mediaItem,
@@ -24,7 +28,6 @@ class MiniPlayer extends ConsumerWidget {
         final mediaItem = snapshot.data;
         if (mediaItem == null) return const SizedBox.shrink();
 
-        // 🎯 FIXED: Detect the extracted local artwork cache file
         final hasArt = mediaItem.artUri != null && mediaItem.artUri!.scheme == 'file';
         final artFile = hasArt ? File(mediaItem.artUri!.path) : null;
 
@@ -35,7 +38,6 @@ class MiniPlayer extends ConsumerWidget {
 
             return GestureDetector(
               onTap: () {
-                // Launch the Full Player Sheet!
                 showModalBottomSheet(
                   context: context,
                   isScrollControlled: true,
@@ -46,11 +48,12 @@ class MiniPlayer extends ConsumerWidget {
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E1E2A).withOpacity(0.9), // Sleek dark premium base
+                  color: colorScheme.surface.withOpacity(0.9), // 🎯 DYNAMIC
                   borderRadius: BorderRadius.circular(24.0),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.4),
+                      // 🎯 DYNAMIC: Light, soft shadow for Light Mode. Deep shadow for Dark Mode.
+                      color: isDark ? Colors.black.withOpacity(0.4) : Colors.black.withOpacity(0.1),
                       blurRadius: 20,
                       offset: const Offset(0, 10),
                     ),
@@ -67,25 +70,30 @@ class MiniPlayer extends ConsumerWidget {
                           // ─── 1. DYNAMIC ALBUM ART ───
                           Hero(
                             tag: 'album_art_${mediaItem.id}',
-                            child: Container(
-                              width: 48,
-                              height: 48,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(16.0),
-                                color: const Color(0xFF6366F1).withOpacity(0.2), // Fallback tint
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(16.0),
-                                // 🎯 If we have the artwork file, render it! Otherwise show the icon.
-                                child: (hasArt && artFile != null && artFile.existsSync())
-                                    ? Image.file(
-                                        artFile, 
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) => const Icon(Icons.music_note_rounded, color: Color(0xFF6366F1)),
-                                      )
-                                    : const Icon(Icons.music_note_rounded, color: Color(0xFF6366F1)),
-                              ),
-                            ),
+                            // 🎯 OPTIMIZED: Cleaned container sizing to drop the old flat purple fallback icon style
+                            child: (hasArt && artFile != null && artFile.existsSync())
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(16.0),
+                                    child: Image.file(
+                                      artFile, 
+                                      width: 48,
+                                      height: 48,
+                                      fit: BoxFit.cover,
+                                      // Trigger 3D fallback if the physical image file errors out at runtime
+                                      errorBuilder: (_, __, ___) => const FallbackAlbumArt(
+                                        width: 48, 
+                                        height: 48, 
+                                        borderRadius: 16.0,
+                                        shadowOpacity: 0.0, // Suppressed inside mini player container
+                                      ),
+                                    ),
+                                  )
+                                : const FallbackAlbumArt(
+                                    width: 48, 
+                                    height: 48, 
+                                    borderRadius: 16.0,
+                                    shadowOpacity: 0.0,
+                                  ),
                           ),
                           const SizedBox(width: 16),
                           
@@ -99,14 +107,14 @@ class MiniPlayer extends ConsumerWidget {
                                   mediaItem.title,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                  style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.bold, fontSize: 14), // 🎯 DYNAMIC
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
                                   mediaItem.artist ?? 'Unknown Artist',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
+                                  style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6), fontSize: 12), // 🎯 DYNAMIC
                                 ),
                               ],
                             ),
@@ -118,8 +126,8 @@ class MiniPlayer extends ConsumerWidget {
                             child: Container(
                               width: 44,
                               height: 44,
-                              decoration: const BoxDecoration(
-                                color: Colors.white,
+                              decoration: BoxDecoration(
+                                color: colorScheme.onSurface, // 🎯 DYNAMIC: Inverts beautifully (Black in Light mode, White in Dark Mode)
                                 shape: BoxShape.circle,
                               ),
                               child: AnimatedSwitcher(
@@ -128,7 +136,7 @@ class MiniPlayer extends ConsumerWidget {
                                 child: Icon(
                                   playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
                                   key: ValueKey(playing),
-                                  color: Colors.black,
+                                  color: colorScheme.surface, // 🎯 DYNAMIC: Matches the background of the mini player
                                   size: 26,
                                 ),
                               ),
@@ -138,7 +146,7 @@ class MiniPlayer extends ConsumerWidget {
 
                           // ─── 4. NEXT TRACK ───
                           IconButton(
-                            icon: const Icon(Icons.skip_next_rounded, color: Colors.white, size: 32),
+                            icon: Icon(Icons.skip_next_rounded, color: colorScheme.onSurface, size: 32), // 🎯 DYNAMIC
                             onPressed: () => audioHandler.skipToNext(),
                           ),
                           const SizedBox(width: 4),

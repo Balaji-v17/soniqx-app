@@ -57,6 +57,7 @@ dependencies:
   http: ^1.6.0 # 🎯 Added for Phase 6 OTA updates
   connectivity_plus: ^7.2.0
   shared_preferences: ^2.5.5
+  sleek_circular_slider: ^2.1.0
 
 dev_dependencies:
   flutter_test:
@@ -87,6 +88,7 @@ flutter:
   assets:
     - assets/seed_db_v1.json
     - assets/manifest.json
+    - assets/images/default_album_art.jpg
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: true

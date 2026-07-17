@@ -82,28 +82,65 @@ class SoniqApp extends ConsumerWidget {
     return MaterialApp(
       title: 'SONIQ',
       debugShowCheckedModeBanner: false,
-      // 💡 Setup a crisp Light Theme definition
+      themeMode: themeMode,
+      
+      // ==========================================
+      // ☀️ LIGHT THEME CONFIGURATION
+      // ==========================================
       theme: ThemeData(
         useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF6366F1),
-          brightness: Brightness.light,
+        brightness: Brightness.light,
+        colorScheme: const ColorScheme.light(
+          primary: Color(0xFF6366F1), // The Soniq Indigo
+          surface: Color(0xFFFFFFFF), // White for cards and bottom nav
+          background: Color(0xFFF8F9FA), // Slightly off-white for the main scaffold
+          onBackground: Colors.black87, // Dark text on background
+          onSurface: Colors.black87, // Dark text on cards
         ),
-        scaffoldBackgroundColor: const Color(0xFFF9FAFB),
+        scaffoldBackgroundColor: const Color(0xFFF8F9FA),
         cardColor: const Color(0xFFFFFFFF),
+        navigationBarTheme: NavigationBarThemeData(
+          backgroundColor: Colors.white,
+          indicatorColor: const Color(0xFF6366F1).withOpacity(0.15),
+          iconTheme: MaterialStateProperty.resolveWith((states) {
+            if (states.contains(MaterialState.selected)) return const IconThemeData(color: Color(0xFF6366F1));
+            return const IconThemeData(color: Colors.black54);
+          }),
+          labelTextStyle: MaterialStateProperty.resolveWith((states) {
+            if (states.contains(MaterialState.selected)) return const TextStyle(color: Color(0xFF6366F1), fontWeight: FontWeight.bold, fontSize: 12);
+            return const TextStyle(color: Colors.black54, fontWeight: FontWeight.normal, fontSize: 12);
+          }),
+        ),
       ),
-      // 💡 Keeping your standard Dark Theme setup
+
+      // ==========================================
+      // 🌙 DARK THEME CONFIGURATION
+      // ==========================================
       darkTheme: ThemeData(
         useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF6366F1),
-          brightness: Brightness.dark,
+        brightness: Brightness.dark,
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFF6366F1),
+          surface: Color(0xFF141414), // Elevated dark gray for cards/bottom nav
+          background: Color(0xFF0A0A0A), // Deep black for the main scaffold
+          onBackground: Colors.white, // White text on background
+          onSurface: Colors.white, // White text on cards
         ),
         scaffoldBackgroundColor: const Color(0xFF0A0A0A),
-        cardColor: const Color(0xFF1A1A1A),
+        cardColor: const Color(0xFF141414),
+        navigationBarTheme: NavigationBarThemeData(
+          backgroundColor: const Color(0xFF141414), // Dark bottom nav
+          indicatorColor: const Color(0xFF6366F1).withOpacity(0.2),
+          iconTheme: MaterialStateProperty.resolveWith((states) {
+            if (states.contains(MaterialState.selected)) return const IconThemeData(color: Color(0xFF6366F1));
+            return const IconThemeData(color: Colors.white54);
+          }),
+          labelTextStyle: MaterialStateProperty.resolveWith((states) {
+            if (states.contains(MaterialState.selected)) return const TextStyle(color: Color(0xFF6366F1), fontWeight: FontWeight.bold, fontSize: 12);
+            return const TextStyle(color: Colors.white54, fontWeight: FontWeight.normal, fontSize: 12);
+          }),
+        ),
       ),
-      // 🎯 Bind themeMode dynamically to your state provider
-      themeMode: themeMode,
       home: const RootScreen(),
     );
   }

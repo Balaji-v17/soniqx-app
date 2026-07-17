@@ -81,7 +81,7 @@ class ManualTagSheet extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(20),
                 ),
                 onPressed: () async {
-                  // 1. Tag the specific song (Updates UI instantly via Drift streams)
+                  // 1. Tag the specific song in the SQLite database
                   await db.songsDao.manuallyTag(song.id, lang);
 
                   // 2. Feed the AI Brain for future scans
@@ -100,7 +100,14 @@ class ManualTagSheet extends ConsumerWidget {
                     debugPrint('🧠 AI Fed: 1 point to $cleanArtist for $lang');
                   }
 
-                  // 3. Dismiss the sheet
+                  // 3. Force the UI to refresh!
+                  // NOTE: If your list provider in providers.dart is named 
+                  // something else (like 'libraryProvider' or 'filteredSongsProvider'), 
+                  // change 'songsProvider' below to match it.
+                 // 3. Force the UI to refresh by invalidating the database provider
+                 ref.invalidate(databaseProvider);
+
+                  // 4. Dismiss the sheet
                   if (context.mounted) {
                     Navigator.pop(context);
                   }

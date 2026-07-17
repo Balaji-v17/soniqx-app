@@ -1,9 +1,11 @@
 import 'dart:io';
+import 'dart:math'; // 🎯 FIXED: Added math library for 'pi'
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:sleek_circular_slider/sleek_circular_slider.dart';
 import 'package:soniq/providers.dart';
-import 'package:soniq/audio/equalizer_presets.dart'; // The file you just generated
+import 'package:soniq/audio/equalizer_presets.dart'; 
 
 class EqualizerScreen extends ConsumerStatefulWidget {
   const EqualizerScreen({super.key});
@@ -16,6 +18,7 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
   bool _isEnabled = false;
   AndroidEqualizerParameters? _params;
   EqPreset _currentPreset = kBuiltinPresets[0];
+  double _bassBoostLevel = 0; 
 
   @override
   void initState() {
@@ -24,7 +27,6 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
   }
 
   Future<void> _initEqualizer() async {
-    // Native Equalizer is an Android-exclusive hardware feature in just_audio
     if (!Platform.isAndroid) return; 
 
     final handler = ref.read(audioHandlerProvider);
@@ -59,7 +61,6 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
       final band = bands[i];
       final freqHz = band.centerFrequency;
 
-      // 🎯 Smart Mapping Algorithm: Finds the closest 10-band preset value for the device's actual native band
       int closestIndex = 0;
       double minDiff = double.infinity;
       for (int j = 0; j < kEqBandFrequenciesHz.length; j++) {
@@ -71,7 +72,6 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
       }
 
       final targetGain = preset.bands[closestIndex];
-      // Native Android bounds are often -15dB to +15dB, so we safely clamp
       final clampedGain = targetGain.clamp(_params!.minDecibels, _params!.maxDecibels);
 
       await band.setGain(clampedGain);
@@ -104,7 +104,6 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
               : Column(
                   children: [
                     const SizedBox(height: 16),
-                    // Presets Row
                     SizedBox(
                       height: 40,
                       child: ListView.builder(
@@ -128,11 +127,9 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
                         },
                       ),
                     ),
-                    const Spacer(),
+                    const SizedBox(height: 48),
                     
-                    // Dynamic Sliders matching the screenshot
-                    SizedBox(
-                      height: 300,
+                    Expanded(
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: _params!.bands.map((band) {
@@ -140,7 +137,18 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
                         }).toList(),
                       ),
                     ),
-                    const SizedBox(height: 64),
+                    
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _buildBassBooster(),
+                          _buildDummy3DKnob(),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 32),
                   ],
                 ),
     );
@@ -161,11 +169,12 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
             quarterTurns: 3,
             child: SliderTheme(
               data: SliderThemeData(
-                trackHeight: 4,
-                activeTrackColor: const Color(0xFFC49A45),
+                trackHeight: 6, 
+                activeTrackColor: const Color(0xFF00E5FF), 
                 inactiveTrackColor: Colors.white10,
-                thumbColor: const Color(0xFFD4D4D8),
-                overlayColor: const Color(0xFFC49A45).withOpacity(0.2),
+                thumbColor: const Color(0xFF1E1E1E), 
+                overlayColor: const Color(0xFF00E5FF).withOpacity(0.2),
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10, elevation: 6, pressedElevation: 10),
               ),
               child: StreamBuilder<double>(
                 stream: band.gainStream,
@@ -190,8 +199,153 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
           ),
         ),
         const SizedBox(height: 24),
-        Text(freqLabel, style: const TextStyle(color: Colors.white38, fontSize: 12, fontWeight: FontWeight.bold)),
+        Text(freqLabel, style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold)),
       ],
     );
   }
-}
+
+  Widget _buildBassBooster() {
+    return Column(
+      children: [
+        SleekCircularSlider(
+          min: 0,
+          max: 100,
+          initialValue: _bassBoostLevel,
+          appearance: CircularSliderAppearance(
+            size: 130, 
+            angleRange: 240,
+            startAngle: 150,
+            customColors: CustomSliderColors(
+              trackColor: Colors.white10,
+              progressBarColors: [const Color(0xFF00E5FF), const Color(0xFFB3FF00), const Color(0xFFFF9800)],
+              dotColor: Colors.transparent, 
+              shadowColor: const Color(0xFF00E5FF).withOpacity(0.2), 
+              shadowMaxOpacity: 0.1,
+              shadowStep: 5,
+            ),
+            customWidths: CustomSliderWidths(
+              trackWidth: 10,
+              progressBarWidth: 14,
+              handlerSize: 0,
+            ),
+          ),
+          innerWidget: (percentage) {
+            final double degrees = 150 + ((percentage / 100) * 240);
+            final double radians = degrees * (pi / 180);
+
+            return Transform.rotate(
+              angle: radians,
+              child: Padding(
+                padding: const EdgeInsets.all(22.0), 
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const RadialGradient(
+                      colors: [Color(0xFF2A2A2A), Color(0xFF0F0F0F)], 
+                      center: Alignment.topLeft,
+                      radius: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(0.8), blurRadius: 12, spreadRadius: 2),
+                      BoxShadow(color: Colors.white.withOpacity(0.05), blurRadius: 2, spreadRadius: 1),
+                    ],
+                  ),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: Container(
+                        width: 12,
+                        height: 3,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF00E5FF), 
+                          borderRadius: BorderRadius.circular(2),
+                          boxShadow: const [BoxShadow(color: Color(0xFF00E5FF), blurRadius: 6)],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+          onChange: _isEnabled ? (double value) {
+            _bassBoostLevel = value;
+            if (_params != null && _params!.bands.isNotEmpty) {
+              final bassBand = _params!.bands[0];
+              final targetGain = (value / 100) * _params!.maxDecibels;
+              bassBand.setGain(targetGain);
+              
+              if (_currentPreset.id != 'custom') {
+                setState(() {
+                  _currentPreset = const EqPreset(id: 'custom', name: 'Custom', emoji: '🎛️', bands: []);
+                });
+              }
+            }
+          } : null,
+        ),
+        const SizedBox(height: 16),
+        Text("Bass Booster", style: TextStyle(color: _isEnabled ? Colors.white : Colors.white38, fontSize: 13, fontWeight: FontWeight.w500)),
+      ],
+    );
+  }
+
+  Widget _buildDummy3DKnob() {
+    return Column(
+      children: [
+        Opacity(
+          opacity: 0.4, 
+          child: SleekCircularSlider(
+            min: 0, max: 100, initialValue: 0,
+            appearance: CircularSliderAppearance(
+              size: 130,
+              angleRange: 240, startAngle: 150,
+              customColors: CustomSliderColors(
+                trackColor: Colors.white10,
+                progressBarColor: Colors.transparent,
+                dotColor: Colors.transparent,
+              ),
+              customWidths: CustomSliderWidths(trackWidth: 10, progressBarWidth: 0, handlerSize: 0),
+            ),
+            innerWidget: (percentage) {
+              return Transform.rotate(
+                // 🎯 FIXED: Cast explicitly as double (150.0)
+                angle: 150.0 * (pi / 180), 
+                child: Padding(
+                  padding: const EdgeInsets.all(22.0),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const RadialGradient(
+                        colors: [Color(0xFF222222), Color(0xFF0A0A0A)],
+                        center: Alignment.topLeft, radius: 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(color: Colors.black.withOpacity(0.8), blurRadius: 12, spreadRadius: 2),
+                      ],
+                    ),
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 8.0),
+                        child: Container(
+                          width: 12, height: 3,
+                          decoration: BoxDecoration(
+                            color: Colors.white24, 
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 16),
+        Text("3D Surround", style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 13, fontWeight: FontWeight.w500)),
+      ],
+    );
+  }
+} // 🎯 FIXED: Missing closing bracket added here

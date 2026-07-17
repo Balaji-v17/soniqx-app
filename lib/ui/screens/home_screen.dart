@@ -1,9 +1,14 @@
-import 'dart:io'; // 🎯 ADDED: Required for rendering Image.file
+// ============================================================
+//  SONIQ — lib/ui/screens/home_screen.dart
+// ============================================================
+
+import 'dart:io'; 
 import 'package:soniq/classifier/language_service.dart';
 import 'package:soniq/providers/auto_mix_provider.dart';
 import 'package:soniq/providers/library_filter_provider.dart';
 import 'package:soniq/ui/widgets/add_to_playlist_sheet.dart';
 import 'package:soniq/ui/widgets/manual_tag_sheet.dart';
+import 'package:soniq/ui/widgets/fallback_album_art.dart'; // 🎯 FIXED: Imported the new 3D fallback widget!
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audio_service/audio_service.dart';
@@ -54,6 +59,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   void _showNamePromptDialog() async {
     final prefs = await SharedPreferences.getInstance();
+    final colorScheme = Theme.of(context).colorScheme;
     final controller = TextEditingController(text: _userName == "User" ? "" : _userName);
     
     if (!mounted) return;
@@ -62,18 +68,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
+        backgroundColor: colorScheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text("Welcome to Soniq", style: TextStyle(color: Colors.white)),
+        title: Text("Welcome to Soniq", style: TextStyle(color: colorScheme.onSurface)),
         content: TextField(
           controller: controller,
-          style: const TextStyle(color: Colors.white),
+          style: TextStyle(color: colorScheme.onSurface),
           textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             hintText: "What is your name?",
-            hintStyle: TextStyle(color: Colors.white38),
-            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF6366F1))),
+            hintStyle: TextStyle(color: colorScheme.onSurface.withOpacity(0.38)),
+            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: colorScheme.onSurface.withOpacity(0.24))),
+            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: colorScheme.primary)),
           ),
         ),
         actions: [
@@ -90,7 +96,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               
               if (context.mounted) Navigator.pop(context);
             },
-            child: const Text("SAVE", style: TextStyle(color: Color(0xFF6366F1), fontWeight: FontWeight.bold)),
+            child: Text("SAVE", style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold)),
           )
         ],
       ),
@@ -107,18 +113,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final database = ref.watch(databaseProvider);
-    final filteredSongsAsync = ref.watch(filteredLibraryProvider); 
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: theme.scaffoldBackgroundColor,
       floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF6366F1),
-        child: const Icon(Icons.sync_rounded, color: Colors.white),
+        backgroundColor: colorScheme.primary,
+        child: Icon(Icons.sync_rounded, color: colorScheme.onPrimary),
         onPressed: () async {
           debugPrint("Triggering AI Classification Pass...");
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('🤖 AI is scanning tracks...'), backgroundColor: Color(0xFF6366F1)),
+              SnackBar(content: const Text('🤖 AI is scanning tracks...'), backgroundColor: colorScheme.primary),
             );
           }
 
@@ -147,12 +154,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       children: [
                         Text(
                           getGreeting(),
-                          style: const TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1.5),
+                          style: TextStyle(color: colorScheme.onBackground.withOpacity(0.54), fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1.5),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           _isLoadingName ? '...' : _userName,
-                          style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
+                          style: TextStyle(color: colorScheme.onBackground, fontSize: 32, fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
@@ -160,10 +167,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       onTap: _showNamePromptDialog,
                       child: CircleAvatar(
                         radius: 24,
-                        backgroundColor: const Color(0xFF1E1E1E),
+                        backgroundColor: colorScheme.surface,
                         child: Text(
                           _isLoadingName ? '' : _userName[0].toUpperCase(), 
-                          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)
+                          style: TextStyle(color: colorScheme.onSurface, fontSize: 18, fontWeight: FontWeight.bold)
                         ),
                       ),
                     ),
@@ -243,8 +250,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 recentlyPlayedIds: recentIds, 
                               );
                               
-                              debugPrint('Smart Shuffle Stats: ${shuffleResult.stats.toString()}');
-
                               final items = await Future.wait(shuffleResult.queue.map((s) async {
                                 final artUri = await ArtworkExtractor.getArtUriFromPath(s.path);
                                 return MediaItem(
@@ -277,7 +282,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 stream: database.historyDao.watchRecentlyPlayed(limit: 10),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const SizedBox(height: 160, child: Center(child: CircularProgressIndicator(color: Color(0xFF6366F1))));
+                    return Center(child: CircularProgressIndicator(color: colorScheme.primary));
                   }
                   final recentSongs = snapshot.data ?? [];
                   if (recentSongs.isEmpty) return _buildEmptyState("Play some music to start your history!");
@@ -302,7 +307,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   final mixesAsync = ref.watch(autoMixProvider);
                   
                   return mixesAsync.when(
-                    loading: () => const SizedBox(height: 200, child: Center(child: CircularProgressIndicator(color: Color(0xFF6366F1)))),
+                    loading: () => SizedBox(height: 200, child: Center(child: CircularProgressIndicator(color: colorScheme.primary))),
                     error: (err, stack) => _buildEmptyState("Error generating mixes."),
                     data: (mixes) {
                       if (mixes.isEmpty) return _buildEmptyState("Tag more songs to generate custom mixes!");
@@ -339,19 +344,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 24),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF141414),
+                        color: colorScheme.surface,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white.withOpacity(0.05)),
+                        border: Border.all(color: colorScheme.onSurface.withOpacity(0.05)),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
                           _StatItem(value: trackCount.toString(), label: 'TRACKS'),
-                          Container(width: 1, height: 40, color: Colors.white10),
+                          Container(width: 1, height: 40, color: colorScheme.onSurface.withOpacity(0.1)),
                           _StatItem(value: albumCount.toString(), label: 'ALBUMS'),
-                          Container(width: 1, height: 40, color: Colors.white10),
+                          Container(width: 1, height: 40, color: colorScheme.onSurface.withOpacity(0.1)),
                           _StatItem(value: artistCount.toString(), label: 'ARTISTS'),
-                          Container(width: 1, height: 40, color: Colors.white10),
+                          Container(width: 1, height: 40, color: colorScheme.onSurface.withOpacity(0.1)),
                           _StatItem(value: hours.toString(), label: 'HOURS'),
                         ],
                       ),
@@ -364,7 +369,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
               _buildFilterChips(context, ref),
               _buildDynamicSectionTitle(ref),
-              _buildFilteredLibrary(filteredSongsAsync, ref),
+              _buildFilteredLibrary(context, ref),
 
             ],
           ),
@@ -374,29 +379,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildSectionTitle(String title, {bool hasViewAll = false}) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(title, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+          Text(title, style: TextStyle(color: colorScheme.onBackground, fontSize: 20, fontWeight: FontWeight.bold)),
           if (hasViewAll)
-            const Text('See all', style: TextStyle(color: Color(0xFF6366F1), fontSize: 14, fontWeight: FontWeight.w600)),
+            Text('See all', style: TextStyle(color: colorScheme.primary, fontSize: 14, fontWeight: FontWeight.w600)),
         ],
       ),
     );
   }
 
   Widget _buildEmptyState(String message) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      child: Text(message, style: const TextStyle(color: Colors.white54, fontSize: 16)),
+      child: Text(message, style: TextStyle(color: colorScheme.onBackground.withOpacity(0.54), fontSize: 16)),
     );
   }
 
   Widget _buildFilterChips(BuildContext context, WidgetRef ref) {
+    final colorScheme = Theme.of(context).colorScheme;
     final activeFilter = ref.watch(libraryFilterProvider);
-    final languages = ['All Tracks', 'Hindi', 'Kannada', 'Tamil', 'Telugu', 'Malayalam', 'English'];
+    final languages = ['All Tracks', 'Hindi', 'Kannada', 'Tamil', 'Telugu', 'Malayalam', 'English', 'Unclassified'];
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -413,14 +421,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: isActive ? const Color(0xFF6366F1) : const Color(0xFF1E1E1E),
+                  color: isActive ? colorScheme.primary : colorScheme.surface,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: isActive ? const Color(0xFF6366F1) : Colors.white24),
+                  border: Border.all(color: isActive ? colorScheme.primary : colorScheme.onSurface.withOpacity(0.1)),
                 ),
                 child: Text(
                   lang,
                   style: TextStyle(
-                    color: isActive ? Colors.white : Colors.white70,
+                    color: isActive ? colorScheme.onPrimary : colorScheme.onSurface.withOpacity(0.7),
                     fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
                   ),
                 ),
@@ -433,40 +441,58 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildDynamicSectionTitle(WidgetRef ref) {
+    final colorScheme = Theme.of(context).colorScheme;
     final activeFilter = ref.watch(libraryFilterProvider);
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
       child: Text(
         activeFilter == 'All Tracks' ? 'All Library Tracks' : activeFilter,
-        style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+        style: TextStyle(color: colorScheme.onBackground, fontSize: 20, fontWeight: FontWeight.bold),
       ),
     );
   }
 
-  Widget _buildFilteredLibrary(AsyncValue<List<Song>> asyncSongs, WidgetRef ref) {
-    return asyncSongs.when(
-      loading: () => const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator(color: Color(0xFF6366F1)))),
-      error: (err, stack) => Padding(padding: const EdgeInsets.all(32), child: Text('Error: $err', style: const TextStyle(color: Colors.white54))),
-      data: (songs) {
-        if (songs.isEmpty) return _buildEmptyState("No tracks found for this filter.");
+  Widget _buildFilteredLibrary(BuildContext context, WidgetRef ref) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final filteredSongsAsync = ref.watch(filteredSongsProvider);
+
+    return filteredSongsAsync.when(
+      loading: () => const Padding(
+        padding: EdgeInsets.all(32),
+        child: Center(child: CircularProgressIndicator()),
+      ),
+      error: (err, stack) => Padding(
+        padding: const EdgeInsets.all(32),
+        child: Text('Error loading tracks.', style: TextStyle(color: colorScheme.onBackground.withOpacity(0.54))),
+      ),
+      data: (filteredSongs) {
+        if (filteredSongs.isEmpty) return _buildEmptyState("No tracks found for this filter.");
+
         return ListView.builder(
           padding: const EdgeInsets.symmetric(horizontal: 8),
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: songs.length,
-          itemBuilder: (context, index) => _RecentVerticalTile(song: songs[index], ref: ref),
+          itemCount: filteredSongs.length,
+          itemExtent: 72.0,   
+          cacheExtent: 500.0, 
+          itemBuilder: (context, index) => _RecentVerticalTile(song: filteredSongs[index], ref: ref),
         );
-      }
+      },
     );
   }
-}
+} 
 
-// 🎯 ADDED: Smart widget to display Album Art with a vibrant color fallback
+// ─── Sub-widgets ─────────────────
+
 class _AlbumArtWidget extends StatelessWidget {
   final Song song;
   final double size;
   final double borderRadius;
   final double iconSize;
+
+  // 🎯 OPTIMIZED: Synchronous RAM cache. Kills the FutureBuilder rebuild loop.
+  static final Map<String, Uri> _uriCache = {};
+  static final Set<String> _noArtCache = {};
 
   const _AlbumArtWidget({
     required this.song,
@@ -475,55 +501,54 @@ class _AlbumArtWidget extends StatelessWidget {
     this.iconSize = 24.0,
   });
 
-  // Generates a vibrant, consistent color based on the song's title
-  Color _getFallbackColor(String title) {
-    final colors = [
-      const Color(0xFF6366F1), // Indigo
-      const Color(0xFFEC4899), // Pink
-      const Color(0xFF14B8A6), // Teal
-      const Color(0xFFF59E0B), // Amber
-      const Color(0xFF8B5CF6), // Purple
-      const Color(0xFFEF4444), // Red
-    ];
-    final index = title.codeUnits.fold<int>(0, (a, b) => a + b) % colors.length;
-    return colors[index].withOpacity(0.3);
-  }
-
   @override
   Widget build(BuildContext context) {
-    final fallbackColor = _getFallbackColor(song.title ?? 'Unknown');
+    // 1. Instant Cache Hit (Fast Path)
+    if (_uriCache.containsKey(song.path)) {
+      return RepaintBoundary(child: _buildImage(_uriCache[song.path]!));
+    }
+    
+    // 2. Known Missing Art (Fast Path)
+    // 🎯 FIXED: Replaced the old manual placeholder with the universal FallbackAlbumArt
+    if (_noArtCache.contains(song.path)) {
+      return RepaintBoundary(
+        child: FallbackAlbumArt(width: size, height: size, borderRadius: borderRadius),
+      );
+    }
 
-    return FutureBuilder<Uri?>(
-      future: ArtworkExtractor.getArtUriFromPath(song.path),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.done && snapshot.data != null) {
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(borderRadius),
-            child: Image.file(
-              File(snapshot.data!.toFilePath()),
-              width: size,
-              height: size,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => _buildFallback(fallbackColor),
-            ),
-          );
-        }
-        return _buildFallback(fallbackColor);
-      },
+    // 3. First Time Load (Async Path)
+    return RepaintBoundary( 
+      child: FutureBuilder<Uri?>(
+        future: ArtworkExtractor.getArtUriFromPath(song.path),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.done) {
+            if (snapshot.data != null) {
+              _uriCache[song.path] = snapshot.data!; 
+              return _buildImage(snapshot.data!);
+            } else {
+              _noArtCache.add(song.path); 
+              // 🎯 FIXED: Connected async failure to universal fallback
+              return FallbackAlbumArt(width: size, height: size, borderRadius: borderRadius);
+            }
+          }
+          // Show fallback while loading to prevent size jumping
+          return FallbackAlbumArt(width: size, height: size, borderRadius: borderRadius); 
+        },
+      ),
     );
   }
 
-  Widget _buildFallback(Color bgColor) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(borderRadius),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
-      ),
-      child: Center(
-        child: Icon(Icons.music_note_rounded, color: Colors.white.withOpacity(0.7), size: iconSize),
+  Widget _buildImage(Uri uri) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(borderRadius),
+      child: Image.file(
+        File(uri.toFilePath()),
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        cacheWidth: (size * 2).toInt(), 
+        // 🎯 FIXED: Image.file errors are also caught and routed to the FallbackAlbumArt
+        errorBuilder: (context, error, stackTrace) => FallbackAlbumArt(width: size, height: size, borderRadius: borderRadius),
       ),
     );
   }
@@ -538,21 +563,22 @@ class _QuickActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFF141414),
+          color: colorScheme.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.05)),
+          border: Border.all(color: colorScheme.onSurface.withOpacity(0.05)),
         ),
         child: Row(
           children: [
-            Icon(icon, color: const Color(0xFF6366F1), size: 24),
+            Icon(icon, color: colorScheme.primary, size: 24),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600), maxLines: 2),
+              child: Text(label, style: TextStyle(color: colorScheme.onSurface, fontSize: 15, fontWeight: FontWeight.w600), maxLines: 2),
             ),
           ],
         ),
@@ -570,6 +596,7 @@ class _JumpBackInCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final db = ref.read(databaseProvider);
+    final colorScheme = Theme.of(context).colorScheme;
 
     return GestureDetector(
       onTap: () async {
@@ -599,12 +626,11 @@ class _JumpBackInCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 🎯 FIXED: Updated to use the smart AlbumArtWidget
             _AlbumArtWidget(song: song, size: 140, borderRadius: 12, iconSize: 48),
             const SizedBox(height: 12),
-            Text(song.title ?? 'Unknown Track', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+            Text(song.title ?? 'Unknown Track', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: colorScheme.onBackground, fontSize: 15, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
-            Text(song.artist ?? 'Unknown Artist', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white54, fontSize: 13)),
+            Text(song.artist ?? 'Unknown Artist', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: colorScheme.onBackground.withOpacity(0.54), fontSize: 13)),
           ],
         ),
       ),
@@ -676,17 +702,16 @@ class _RecentVerticalTile extends StatelessWidget {
     final minutes = duration.inMinutes;
     final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
     final db = ref.read(databaseProvider);
+    final colorScheme = Theme.of(context).colorScheme;
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      // 🎯 FIXED: Updated to use the smart AlbumArtWidget
       leading: _AlbumArtWidget(song: song, size: 54, borderRadius: 8, iconSize: 24),
-      title: Text(song.title ?? 'Unknown Track', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600)),
-      subtitle: Text(song.artist ?? 'Unknown Artist', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white54, fontSize: 13)),
+      title: Text(song.title ?? 'Unknown Track', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: colorScheme.onBackground, fontSize: 15, fontWeight: FontWeight.w600)),
+      subtitle: Text(song.artist ?? 'Unknown Artist', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: colorScheme.onBackground.withOpacity(0.54), fontSize: 13)),
       
       onTap: () async {
         final handler = ref.read(audioHandlerProvider);
-        
         final artUri = await ArtworkExtractor.getArtUriFromPath(song.path);
         
         await handler.playMediaItem(MediaItem(
@@ -702,18 +727,18 @@ class _RecentVerticalTile extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (song.genre != null && song.genre!.isNotEmpty)
+          if ((song.languageTag != null && song.languageTag!.isNotEmpty) || (song.genre != null && song.genre!.isNotEmpty))
             Container(
               margin: const EdgeInsets.only(right: 8),
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: const Color(0xFF6366F1).withOpacity(0.2),
+                color: colorScheme.primary.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: const Color(0xFF6366F1).withOpacity(0.5)),
+                border: Border.all(color: colorScheme.primary.withOpacity(0.5)),
               ),
               child: Text(
-                song.genre!.toUpperCase(), 
-                style: const TextStyle(color: Color(0xFF6366F1), fontSize: 9, fontWeight: FontWeight.bold)
+                (song.languageTag?.isNotEmpty == true ? song.languageTag! : song.genre!).toUpperCase(), 
+                style: TextStyle(color: colorScheme.primary, fontSize: 9, fontWeight: FontWeight.bold)
               ),
             ),
           
@@ -724,7 +749,7 @@ class _RecentVerticalTile extends StatelessWidget {
               return IconButton(
                 icon: Icon(
                   isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                  color: isFavorite ? const Color(0xFF6366F1) : Colors.white38,
+                  color: isFavorite ? colorScheme.primary : colorScheme.onBackground.withOpacity(0.38),
                   size: 20,
                 ),
                 onPressed: () => db.playlistsDao.toggleFavorite(song.id),
@@ -732,18 +757,18 @@ class _RecentVerticalTile extends StatelessWidget {
             },
           ),
           const SizedBox(width: 8),
-          Text('$minutes:$seconds', style: const TextStyle(color: Colors.white38, fontSize: 13)),
+          Text('$minutes:$seconds', style: TextStyle(color: colorScheme.onBackground.withOpacity(0.38), fontSize: 13)),
           
           PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert, color: Colors.white38, size: 20),
-            color: const Color(0xFF2A2A2A),
+            icon: Icon(Icons.more_vert, color: colorScheme.onBackground.withOpacity(0.38), size: 20),
+            color: colorScheme.surface,
             onSelected: (value) {
               if (value == 'add_to_playlist') AddToPlaylistSheet.show(context, song.id);
               if (value == 'edit_tag') Future.delayed(const Duration(milliseconds: 50), () => ManualTagSheet.show(context, song));
             },
             itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-              const PopupMenuItem<String>(value: 'add_to_playlist', child: Row(children: [Icon(Icons.playlist_add, size: 20, color: Colors.white70), SizedBox(width: 12), Text('Add to Playlist', style: TextStyle(color: Colors.white))])),
-              const PopupMenuItem<String>(value: 'edit_tag', child: Row(children: [Icon(Icons.label_outline, size: 20, color: Colors.white70), SizedBox(width: 12), Text('Edit Language Tag', style: TextStyle(color: Colors.white))])),
+              PopupMenuItem<String>(value: 'add_to_playlist', child: Row(children: [Icon(Icons.playlist_add, size: 20, color: colorScheme.onSurface), const SizedBox(width: 12), Text('Add to Playlist', style: TextStyle(color: colorScheme.onSurface))])),
+              PopupMenuItem<String>(value: 'edit_tag', child: Row(children: [Icon(Icons.label_outline, size: 20, color: colorScheme.onSurface), const SizedBox(width: 12), Text('Edit Language Tag', style: TextStyle(color: colorScheme.onSurface))])),
             ],
           ),
         ],
@@ -760,11 +785,12 @@ class _StatItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Column(
       children: [
-        Text(value, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+        Text(value, style: TextStyle(color: colorScheme.onBackground, fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
-        Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w600)),
+        Text(label, style: TextStyle(color: colorScheme.onBackground.withOpacity(0.4), fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w600)),
       ],
     );
   }
@@ -776,22 +802,24 @@ class RecentlyAddedScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final database = ref.watch(databaseProvider);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0A0A),
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0A0A0A),
+        backgroundColor: theme.scaffoldBackgroundColor,
         elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: const Text('Recently Added', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        iconTheme: IconThemeData(color: colorScheme.onBackground),
+        title: Text('Recently Added', style: TextStyle(color: colorScheme.onBackground, fontWeight: FontWeight.bold)),
       ),
       body: StreamBuilder<List<Song>>(
         stream: database.songsDao.watchAllAvailable(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Color(0xFF6366F1)));
+          if (snapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: colorScheme.primary));
           
           final songs = List<Song>.from(snapshot.data ?? []);
-          if (songs.isEmpty) return const Center(child: Text("No songs found.", style: TextStyle(color: Colors.white54)));
+          if (songs.isEmpty) return Center(child: Text("No songs found.", style: TextStyle(color: colorScheme.onBackground.withOpacity(0.54))));
 
           songs.sort((a, b) => (b.dateAdded ?? 0).compareTo(a.dateAdded ?? 0));
           final recentSongs = songs.take(100).toList(); 
@@ -799,6 +827,8 @@ class RecentlyAddedScreen extends ConsumerWidget {
           return ListView.builder(
             padding: const EdgeInsets.only(bottom: 120, top: 16),
             itemCount: recentSongs.length,
+            itemExtent: 72.0,   
+            cacheExtent: 500.0, 
             itemBuilder: (context, index) => _RecentVerticalTile(song: recentSongs[index], ref: ref),
           );
         },

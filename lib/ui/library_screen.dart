@@ -1,3 +1,4 @@
+import 'dart:io'; // 🎯 Added to read physical image files
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audio_service/audio_service.dart';
@@ -5,11 +6,12 @@ import 'package:drift/drift.dart' as drift;
 
 import 'package:soniq/providers/library_filter_provider.dart';
 import 'package:soniq/providers/auto_mix_provider.dart'; 
-import '../classifier/language_service.dart'; // 🎯 Added to access the AI Engine
+import '../classifier/language_service.dart'; 
 
 import '../audio/artwork_extractor.dart';
 import '../providers.dart';
 import '../database/database.dart'; 
+import 'package:soniq/ui/widgets/fallback_album_art.dart'; // 🎯 Added your universal 3D fallback art
 import 'song_tile.dart';
 
 class LibraryScreen extends ConsumerWidget {
@@ -362,14 +364,25 @@ class _LibraryRecentCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              height: 140,
-              width: 140,
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E1E1E),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.music_note_rounded, color: Colors.white24, size: 48),
+            // 🎯 FIXED: Proper dynamic artwork loading with 3D Fallback implementation
+            FutureBuilder<Uri?>(
+              future: ArtworkExtractor.getArtUriFromPath(song.path),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.done && snapshot.data != null) {
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.file(
+                      File(snapshot.data!.toFilePath()),
+                      width: 140,
+                      height: 140,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const FallbackAlbumArt(width: 140, height: 140, borderRadius: 12),
+                    ),
+                  );
+                }
+                // Shows the proportional 3D widget while loading or if no art exists
+                return const FallbackAlbumArt(width: 140, height: 140, borderRadius: 12);
+              },
             ),
             const SizedBox(height: 8),
             Text(

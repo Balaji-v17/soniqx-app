@@ -4,13 +4,14 @@
 // ============================================================
 
 import 'dart:isolate';
-import 'package:path/path.dart' as p; // 🎯 Need this for path.dirname and basename
+import 'package:path/path.dart' as p; 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:soniq/providers.dart';
 import 'package:soniq/database/database.dart';
 import 'language_seed_db.dart';
 import 'language_classifier.dart';
-import 'seed_updater.dart'; // 🎯 Added import for OTA updates
+import 'seed_updater.dart'; 
+import 'package:soniq/classifier/fallback_classifier.dart'; // 🎯 NEW: Imported the Signal Cascade!
 
 final languageServiceProvider = Provider((ref) {
   return LanguageService(ref.watch(databaseProvider));
@@ -28,7 +29,6 @@ class LanguageService {
     _isClassifying = true;
 
     try {
-      // 🎯 FIXED: Passed _db to ensureLoaded for OTA priority checks
       await LanguageSeedDb.ensureLoaded(_db);
       final databasePayload = LanguageSeedDb.rawCache;
 
@@ -50,6 +50,7 @@ class LanguageService {
           'title': s.title ?? '',
           'artist': s.artist ?? '',
           'album': s.album ?? '',
+          'path': s.path, 
         }).toList();
 
         final isolateBundle = {
@@ -67,8 +68,8 @@ class LanguageService {
 
           print('🎯 [DEBUG] Batch Result -> ID: $songId | Score: $conf | Lang: $lang | Manual: $needsManual');
 
-          // Only auto-classify if it confidently passed the primary cascade rules
-          if (!needsManual && lang != null) {
+          // Only auto-classify if it confidently passed the primary cascade OR the heuristic fallback
+          if (!needsManual && lang != null && lang != 'und') {
             await _db.songsDao.autoClassify(songId, lang, conf);
             print('✅ Auto-Tagged: $lang ($conf) -> Song ID: $songId');
           }
@@ -89,7 +90,6 @@ class LanguageService {
 
   /// 🎯 Strategy 4 Post-Scan Consensus Logic
   Future<void> _applyDirectoryConsensus() async {
-    // Grab everything that remains unclassified after the main pass
     final remainingUntagged = await _db.songsDao.getUnclassifiedSongs();
     
     for (final song in remainingUntagged) {
@@ -108,7 +108,7 @@ class LanguageService {
 
         // Filter to find neighbors that have already been confidently classified
         final classifiedSiblings = siblings
-            .where((s) => s.id != song.id && s.languageTag != null)
+            .where((s) => s.id != song.id && s.languageTag != null && s.languageTag != 'und')
             .toList();
 
         if (classifiedSiblings.length < 3) continue; // Skip if there isn't enough context
@@ -147,7 +147,6 @@ class LanguageService {
       await _db.languageDao.applyPendingCorrections();
       print('🧠 AI successfully learned from recent manual tags!');
       
-      // 🎯 FIXED: Replaced Dev Mode skip with actual OTA network fetch
       print('📡 Contacting GitHub infrastructure for database updates...');
       final updater = SeedUpdater(_db);
       final status = await updater.checkAndUpdate();
@@ -157,12 +156,33 @@ class LanguageService {
     }
   }
 
-  static List<Map<String, dynamic>> _processChunkInIsolate(Map<String, dynamic> bundle) {
+  static Future<List<Map<String, dynamic>>> _processChunkInIsolate(Map<String, dynamic> bundle) async {
     final Map<String, Map<String, double>> localDb = Map<String, Map<String, double>>.from(bundle['db']);
     final List<Map<String, dynamic>> tracks = List<Map<String, dynamic>>.from(bundle['tracks']);
     final List<Map<String, dynamic>> results = [];
     
+    // 🎯 INITIALIZE FALLBACK CLASSIFIER ONCE PER CHUNK
+    final fallbackClassifier = FallbackClassifier(
+      seedDb: localDb,
+      albumPatterns: {
+        'mungaru male': 'Kannada',
+        'kgf': 'Kannada',
+        'kantara': 'Kannada',
+        'pushpa': 'Telugu',
+        'rrr': 'Telugu',
+        'bahubali': 'Telugu',
+        'vikram': 'Tamil',
+        'leo': 'Tamil',
+        'jailer': 'Tamil',
+        'aashiqui': 'Hindi',
+        'jawan': 'Hindi',
+        'pathaan': 'Hindi',
+        'animal': 'Hindi',
+      },
+    );
+
     for (final req in tracks) {
+      // 1. Attempt Primary Metadata NLP Classification
       final res = LanguageClassifier.classify(
         title: req['title'],
         artist: req['artist'],
@@ -170,11 +190,30 @@ class LanguageService {
         localDb: localDb,
       );
       
+      String? finalLang = res.language;
+      bool manualNeeded = res.needsManual;
+      double finalConf = res.confidence;
+
+      // 2. 🎯 HEURISTIC FALLBACK: Triggered if metadata is completely stripped/useless
+      if (finalLang == null || finalLang == 'und' || manualNeeded) {
+        
+        final fallbackResult = fallbackClassifier.classify(req['path']);
+
+        if (fallbackResult.language != null && fallbackResult.language != 'und') {
+          finalLang = fallbackResult.language;
+          manualNeeded = !fallbackResult.shouldAutoTag; 
+          finalConf = fallbackResult.confidence;
+        } else {
+          finalLang = 'und';
+          manualNeeded = true;
+        }
+      }
+      
       results.add({
         'id': req['id'],
-        'language': res.language,
-        'confidence': res.confidence,
-        'needsManual': res.needsManual,
+        'language': finalLang,
+        'confidence': finalConf,
+        'needsManual': manualNeeded,
       });
     }
     

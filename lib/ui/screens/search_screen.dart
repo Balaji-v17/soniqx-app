@@ -46,24 +46,29 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     final db = ref.watch(databaseProvider);
     final audioHandler = ref.watch(audioHandlerProvider);
     final searchQuery = ref.watch(searchQueryProvider);
+    
+    // 🎯 Access the global theme colors
+    final colorScheme = Theme.of(context).colorScheme;
+    final scaffoldBg = Theme.of(context).scaffoldBackgroundColor;
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
+      backgroundColor: Colors.transparent, // Lets the RootScreen background show through
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0A0A0A).withOpacity(0.8),
+        // 🎯 DYNAMIC: Inherit background but keep the translucency
+        backgroundColor: scaffoldBg.withOpacity(0.8),
         elevation: 0,
         toolbarHeight: 80,
         title: TextField(
           controller: _searchController,
           onChanged: (value) => _onSearchChanged(value, ref),
-          style: const TextStyle(color: Colors.white, fontSize: 16),
+          style: TextStyle(color: colorScheme.onBackground, fontSize: 16), // 🎯 DYNAMIC
           decoration: InputDecoration(
             hintText: 'Search songs, artists, or albums...',
-            hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-            prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF6366F1)),
+            hintStyle: TextStyle(color: colorScheme.onBackground.withOpacity(0.3)), // 🎯 DYNAMIC
+            prefixIcon: Icon(Icons.search_rounded, color: colorScheme.primary), // 🎯 DYNAMIC
             suffixIcon: _searchController.text.isNotEmpty
                 ? IconButton(
-                    icon: const Icon(Icons.clear_rounded, color: Colors.white54),
+                    icon: Icon(Icons.clear_rounded, color: colorScheme.onBackground.withOpacity(0.54)), // 🎯 DYNAMIC
                     onPressed: () {
                       _searchController.clear();
                       _onSearchChanged('', ref);
@@ -71,7 +76,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   )
                 : null,
             filled: true,
-            fillColor: const Color(0xFF1A1A2E),
+            fillColor: colorScheme.surface, // 🎯 DYNAMIC: Changes from dark purple to white automatically
             contentPadding: const EdgeInsets.symmetric(vertical: 0),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16.0),
@@ -80,26 +85,25 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           ),
         ),
       ),
-body: searchQuery.isEmpty
-          ? _buildIdleState()
-          // 🎯 FIXED: Changed StreamBuilder to FutureBuilder
+      body: searchQuery.isEmpty
+          ? _buildIdleState(context)
           : FutureBuilder<List<Song>>(
               future: db.songsDao.searchSongs(searchQuery), 
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: CircularProgressIndicator(color: Color(0xFF6366F1)),
+                  return Center(
+                    child: CircularProgressIndicator(color: colorScheme.primary),
                   );
                 }
 
                 final results = snapshot.data ?? [];
 
                 if (results.isEmpty) {
-                  return _buildNoResultsState(searchQuery);
+                  return _buildNoResultsState(context, searchQuery);
                 }
 
                 return ListView.builder(
-                  padding: const EdgeInsets.only(top: 8, bottom: 80), // Added bottom padding to clear the mini-player
+                  padding: const EdgeInsets.only(top: 8, bottom: 80), // Clear the mini-player
                   itemCount: results.length,
                   itemExtent: 72.0, // 60fps locked scroll
                   itemBuilder: (context, index) {
@@ -115,41 +119,43 @@ body: searchQuery.isEmpty
     );
   }
 
-  Widget _buildIdleState() {
+  Widget _buildIdleState(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.search_rounded, size: 64, color: Colors.white.withOpacity(0.1)),
+          Icon(Icons.search_rounded, size: 64, color: colorScheme.onBackground.withOpacity(0.1)),
           const SizedBox(height: 16),
           Text(
             'Find your music',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.white.withOpacity(0.5)),
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: colorScheme.onBackground.withOpacity(0.5)),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildNoResultsState(String query) {
+  Widget _buildNoResultsState(BuildContext context, String query) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.manage_search_rounded, size: 64, color: Colors.white.withOpacity(0.2)),
+            Icon(Icons.manage_search_rounded, size: 64, color: colorScheme.onBackground.withOpacity(0.2)),
             const SizedBox(height: 16),
             Text(
               'No results for "$query"',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.white),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: colorScheme.onBackground),
             ),
             const SizedBox(height: 8),
             Text(
               'Check your spelling or try a different term.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white.withOpacity(0.5)),
+              style: TextStyle(color: colorScheme.onBackground.withOpacity(0.5)),
             ),
           ],
         ),
@@ -181,10 +187,12 @@ class _SearchResultTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
     return InkWell(
       onTap: onTap,
-      highlightColor: Colors.white.withOpacity(0.05),
-      splashColor: Colors.white.withOpacity(0.1),
+      highlightColor: colorScheme.onBackground.withOpacity(0.05), // 🎯 DYNAMIC
+      splashColor: colorScheme.onBackground.withOpacity(0.1), // 🎯 DYNAMIC
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16.0),
         child: Row(
@@ -194,13 +202,13 @@ class _SearchResultTile extends StatelessWidget {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1A1A2E),
+                  color: colorScheme.surface, // 🎯 DYNAMIC
                   borderRadius: BorderRadius.circular(8.0),
-                  border: Border.all(color: Colors.white.withOpacity(0.05)),
+                  border: Border.all(color: colorScheme.onBackground.withOpacity(0.05)), // 🎯 DYNAMIC
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8.0),
-                  child: const Icon(Icons.music_note_rounded, color: Color(0xFF6366F1), size: 24),
+                  child: Icon(Icons.music_note_rounded, color: colorScheme.primary, size: 24), // 🎯 DYNAMIC
                 ),
               ),
             ),
@@ -214,8 +222,8 @@ class _SearchResultTile extends StatelessWidget {
                     song.title ?? 'Unknown Track',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: colorScheme.onBackground, // 🎯 DYNAMIC
                       fontSize: 15.0,
                       fontWeight: FontWeight.w500,
                     ),
@@ -226,7 +234,7 @@ class _SearchResultTile extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.55),
+                      color: colorScheme.onBackground.withOpacity(0.55), // 🎯 DYNAMIC
                       fontSize: 13.0,
                     ),
                   ),

@@ -55,8 +55,9 @@ android {
             versionNameSuffix   = "-debug"
         }
         release {
-            // Now correctly pointing to the "release" block above
-            signingConfig = signingConfigs.getByName("release")
+            // 🎯 FIXED: Pointing to "debug" so `flutter run --release` works locally
+            // without crashing due to missing production environment variables.
+            signingConfig = signingConfigs.getByName("debug")
             manifestPlaceholders["crashlyticsEnabled"] = "true"
             isMinifyEnabled   = true
             isShrinkResources = true

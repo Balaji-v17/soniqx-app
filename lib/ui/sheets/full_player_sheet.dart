@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:soniq/providers.dart';
+import 'package:soniq/ui/widgets/fallback_album_art.dart'; // 🎯 FIXED: Added the missing import!
 
 class FullPlayerSheet extends ConsumerWidget {
   const FullPlayerSheet({super.key});
@@ -111,36 +112,38 @@ class FullPlayerSheet extends ConsumerWidget {
                       ),
 
                       const Spacer(flex: 1),
-
-                      // Massive Album Art
                       Hero(
                         tag: 'album_art_${mediaItem.id}',
                         child: Container(
-                          width: MediaQuery.of(context).size.width * 0.85,
-                          height: MediaQuery.of(context).size.width * 0.85,
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(24.0),
+                            borderRadius: BorderRadius.circular(20.0),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withOpacity(0.5),
+                                color: Colors.black.withOpacity(0.2),
                                 blurRadius: 30,
                                 offset: const Offset(0, 15),
                               ),
                             ],
                           ),
                           child: ClipRRect(
-                            borderRadius: BorderRadius.circular(24.0),
-                            child: (hasArt && artFile != null && artFile.existsSync())
+                            borderRadius: BorderRadius.circular(20.0), 
+                            child: (artFile != null && artFile.existsSync())
                                 ? Image.file(
                                     artFile,
+                                    width: 320,
+                                    height: 320,
                                     fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => const DefaultPlaceholderArt(),
+                                    errorBuilder: (context, error, stackTrace) => FallbackAlbumArt(width: 320, height: 320, borderRadius: 20.0, shadowOpacity: 0.3),
                                   )
-                                : const DefaultPlaceholderArt(),
+                                : FallbackAlbumArt(
+                                    width: 320, 
+                                    height: 320, 
+                                    borderRadius: 20.0, 
+                                    shadowOpacity: 0.3,
+                                  ),
                           ),
                         ),
-                      ),
-
+                      ), 
                       const Spacer(flex: 1),
 
                       // Song Info
@@ -201,7 +204,6 @@ class FullPlayerSheet extends ConsumerWidget {
 
 // ─── Options Menu Bottom Sheet ───────────────────────────────────────
 
-// 🎯 CONVERTED: Made this a ConsumerWidget so we can access the databaseProvider
 class _OptionsContent extends ConsumerWidget {
   final MediaItem mediaItem;
   final AudioHandler audioHandler;
@@ -236,7 +238,6 @@ class _OptionsContent extends ConsumerWidget {
           ListTile(
             leading: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
             title: const Text("Delete from device", style: TextStyle(color: Colors.redAccent, fontSize: 16)),
-            // 🎯 FIXED: Passes ref into the delete method
             onTap: () => _deleteSong(context, ref),
           ),
 
@@ -288,7 +289,6 @@ class _OptionsContent extends ConsumerWidget {
     );
   }
 
-  // 🎯 FIXED: Comprehensive Delete Logic Implementation
   Future<void> _deleteSong(BuildContext context, WidgetRef ref) async {
     final shouldDelete = await showDialog<bool>(
       context: context,
@@ -321,27 +321,23 @@ class _OptionsContent extends ConsumerWidget {
 
       if (path == null || songId == null) throw Exception("Missing file path or song ID.");
 
-      // 1. Release the OS File Lock by stopping playback or skipping
       if (audioHandler.playbackState.value.playing) {
          await audioHandler.skipToNext();
       } else {
          await audioHandler.stop();
       }
       
-      // Brief delay to ensure OS lets go of the file handle
       await Future.delayed(const Duration(milliseconds: 150));
 
-      // 2. Delete the physical file
       final file = File(path);
       if (await file.exists()) {
         await file.delete();
       }
 
-      // 3. Purge from Drift Database
       await (db.delete(db.songs)..where((s) => s.id.equals(songId))).go();
 
       if (context.mounted) {
-        Navigator.pop(context); // Close the bottom sheet
+        Navigator.pop(context); 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('File permanently deleted from device.'),

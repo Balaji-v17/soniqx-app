@@ -27,7 +27,11 @@ class LanguageSeedDb {
       // 🎯 Dynamic evaluation priority: local OTA document -> bundled asset file
       final Map<String, dynamic> rawJsonData = await updater.loadSeedDatabase();
       
-      final Map<String, dynamic> artistsMap = rawJsonData['artists'] ?? {};
+      // 🎯 THE FIX: Smart parsing that handles both nested and flat JSON structures
+      final Map<String, dynamic> artistsMap = rawJsonData.containsKey('artists') 
+          ? rawJsonData['artists'] as Map<String, dynamic>
+          : rawJsonData; 
+
       final Map<String, Map<String, double>> parsedDb = {};
 
       artistsMap.forEach((artistKey, langMap) {
