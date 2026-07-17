@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch: # 🎯 ADDED: This creates a manual "Run workflow" button in GitHub!
 
 jobs:
   build:
+# ... (leave the rest of the file exactly the same)
     name: Build APK
     runs-on: ubuntu-latest
 
