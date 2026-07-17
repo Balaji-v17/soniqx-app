@@ -40,10 +40,14 @@ android {
         
         // This pulls your secure passwords from GitHub Actions
         create("release") {
-            storeFile = file("upload-keystore.jks")
-            storePassword = System.getenv("KEYSTORE_PASSWORD")
-            keyAlias = System.getenv("ALIAS")
-            keyPassword = System.getenv("KEY_PASSWORD")
+            // 🎯 FIXED: Made path dynamic so your GitHub workflow can pass it in via KEYSTORE_PATH
+            val keystorePath = System.getenv("KEYSTORE_PATH") ?: "upload-keystore.jks"
+            storeFile = file(keystorePath)
+            
+            // 🎯 FIXED: Provide empty string fallbacks so Gradle config phase doesn't crash locally
+            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
+            keyAlias = System.getenv("KEY_ALIAS") ?: System.getenv("ALIAS") ?: ""
+            keyPassword = System.getenv("KEY_PASSWORD") ?: ""
         }
     }
 
@@ -55,9 +59,15 @@ android {
             versionNameSuffix   = "-debug"
         }
         release {
-            // 🎯 FIXED: Pointing to "debug" so `flutter run --release` works locally
-            // without crashing due to missing production environment variables.
-            signingConfig = signingConfigs.getByName("debug")
+            // 🎯 FIXED: Smart Routing! 
+            // If GitHub provides a password, sign for production. 
+            // Otherwise, fall back to debug so local MacBook builds don't crash.
+            if (!System.getenv("KEYSTORE_PASSWORD").isNullOrEmpty()) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                signingConfig = signingConfigs.getByName("debug")
+            }
+            
             manifestPlaceholders["crashlyticsEnabled"] = "true"
             isMinifyEnabled   = true
             isShrinkResources = true
