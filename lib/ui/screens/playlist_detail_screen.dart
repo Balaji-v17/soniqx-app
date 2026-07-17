@@ -12,7 +12,7 @@ import 'package:soniq/database/database.dart';
 import 'package:soniq/audio/soniq_audio_handler.dart';
 import 'package:soniq/audio/artwork_extractor.dart';
 import 'package:soniq/audio/shuffle_engine.dart';
-import 'package:soniq/ui/widgets/mini_player.dart'; // 🎯 ADDED THIS IMPORT
+import 'package:soniq/ui/widgets/mini_player.dart';
 
 class PlaylistDetailScreen extends ConsumerWidget {
   final Playlist playlist;
@@ -23,29 +23,32 @@ class PlaylistDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final db = ref.watch(databaseProvider);
     final audioHandler = ref.watch(audioHandlerProvider);
+    
+    // Grab the current theme to dynamically style the UI
+    final theme = Theme.of(context);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF000000),
-      // 🎯 FIXED: Wrapped the body in a Stack to overlay the MiniPlayer
+      // 🎯 FIXED: Removed hardcoded black background. Now it inherits the global theme background.
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: Stack(
         children: [
           CustomScrollView(
             slivers: [
               // 1. Premium App Bar
               SliverAppBar(
-                backgroundColor: const Color(0xFF0A0A0A).withOpacity(0.9),
+                backgroundColor: theme.scaffoldBackgroundColor.withOpacity(0.9),
                 pinned: true,
                 expandedHeight: 120.0,
                 leading: IconButton(
-                  icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+                  icon: Icon(Icons.arrow_back_ios_new_rounded, color: theme.iconTheme.color),
                   onPressed: () => Navigator.pop(context),
                 ),
                 flexibleSpace: FlexibleSpaceBar(
                   titlePadding: const EdgeInsets.only(left: 48, bottom: 16),
                   title: Text(
                     playlist.name,
-                    style: const TextStyle(
-                      color: Colors.white,
+                    style: TextStyle(
+                      color: theme.textTheme.titleLarge?.color,
                       fontWeight: FontWeight.w700,
                       letterSpacing: -0.5,
                     ),
@@ -53,8 +56,8 @@ class PlaylistDetailScreen extends ConsumerWidget {
                 ),
                 actions: [
                   IconButton(
-                    icon: const Icon(Icons.add_rounded, color: Colors.white, size: 28),
-                    onPressed: () => _showAddSongsSheet(context, db, playlist.id),
+                    icon: Icon(Icons.add_rounded, color: theme.iconTheme.color, size: 28),
+                    onPressed: () => _showAddSongsSheet(context, db, playlist.id, theme),
                   ),
                   const SizedBox(width: 8),
                 ],
@@ -79,7 +82,7 @@ class PlaylistDetailScreen extends ConsumerWidget {
                               icon: const Icon(Icons.play_arrow_rounded, color: Colors.white),
                               label: const Text('Play', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF6366F1),
+                                backgroundColor: const Color(0xFF6366F1), // Kept primary brand color
                                 padding: const EdgeInsets.symmetric(vertical: 14),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                 elevation: 0,
@@ -90,10 +93,10 @@ class PlaylistDetailScreen extends ConsumerWidget {
                           Expanded(
                             child: ElevatedButton.icon(
                               onPressed: () => _shufflePlaylist(songs, audioHandler),
-                              icon: const Icon(Icons.shuffle_rounded, color: Colors.white),
-                              label: const Text('Shuffle', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                              icon: Icon(Icons.shuffle_rounded, color: theme.colorScheme.onSurfaceVariant),
+                              label: Text('Shuffle', style: TextStyle(color: theme.colorScheme.onSurfaceVariant, fontSize: 16, fontWeight: FontWeight.bold)),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF1E1E1E),
+                                backgroundColor: theme.colorScheme.surfaceVariant, // 🎯 FIXED: Dynamic button background
                                 padding: const EdgeInsets.symmetric(vertical: 14),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                 elevation: 0,
@@ -125,15 +128,15 @@ class PlaylistDetailScreen extends ConsumerWidget {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.queue_music_rounded, size: 64, color: Colors.white.withOpacity(0.1)),
+                            Icon(Icons.queue_music_rounded, size: 64, color: theme.iconTheme.color?.withOpacity(0.1)),
                             const SizedBox(height: 16),
                             Text(
                               'This playlist is empty',
-                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: Colors.white.withOpacity(0.5)),
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: theme.textTheme.bodyLarge?.color?.withOpacity(0.5)),
                             ),
                             const SizedBox(height: 8),
                             TextButton(
-                              onPressed: () => _showAddSongsSheet(context, db, playlist.id),
+                              onPressed: () => _showAddSongsSheet(context, db, playlist.id, theme),
                               child: const Text('Add Songs', style: TextStyle(color: Color(0xFF818CF8))),
                             )
                           ],
@@ -150,6 +153,7 @@ class PlaylistDetailScreen extends ConsumerWidget {
                           song: song,
                           playlistId: playlist.id,
                           db: db,
+                          theme: theme, // Pass theme to tile
                           onTap: () => _playPlaylist(songs, index, audioHandler),
                         );
                       },
@@ -164,7 +168,6 @@ class PlaylistDetailScreen extends ConsumerWidget {
             ],
           ),
           
-          // 🎯 FIXED: The MiniPlayer now sits constantly at the bottom of the screen
           const Align(
             alignment: Alignment.bottomCenter,
             child: MiniPlayer(),
@@ -217,19 +220,19 @@ class PlaylistDetailScreen extends ConsumerWidget {
     await handler.play();
   }
 
-  void _showAddSongsSheet(BuildContext context, AppDatabase db, int playlistId) {
+  void _showAddSongsSheet(BuildContext context, AppDatabase db, int playlistId, ThemeData theme) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF13141F),
+      backgroundColor: theme.scaffoldBackgroundColor, // 🎯 FIXED: Dynamic bottom sheet color
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) => SizedBox(
         height: MediaQuery.of(context).size.height * 0.75,
         child: Column(
           children: [
-            const Padding(
-              padding: EdgeInsets.all(24.0),
-              child: Text('Add Songs', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+            Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Text('Add Songs', style: TextStyle(color: theme.textTheme.titleLarge?.color, fontSize: 20, fontWeight: FontWeight.bold)),
             ),
             Expanded(
               child: StreamBuilder<List<Song>>(
@@ -241,9 +244,9 @@ class PlaylistDetailScreen extends ConsumerWidget {
                     itemBuilder: (context, index) {
                       final song = allSongs[index];
                       return ListTile(
-                        leading: const Icon(Icons.music_note_rounded, color: Colors.white54),
-                        title: Text(song.title ?? 'Unknown Track', maxLines: 1, style: const TextStyle(color: Colors.white)),
-                        subtitle: Text(song.artist ?? 'Unknown', maxLines: 1, style: const TextStyle(color: Colors.white54)),
+                        leading: Icon(Icons.music_note_rounded, color: theme.iconTheme.color?.withOpacity(0.6)),
+                        title: Text(song.title ?? 'Unknown Track', maxLines: 1, style: TextStyle(color: theme.textTheme.bodyLarge?.color)),
+                        subtitle: Text(song.artist ?? 'Unknown', maxLines: 1, style: TextStyle(color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6))),
                         trailing: IconButton(
                           icon: const Icon(Icons.add_circle_outline_rounded, color: Color(0xFF6366F1)),
                           onPressed: () async {
@@ -277,12 +280,14 @@ class _PlaylistSongTile extends StatelessWidget {
   final Song song;
   final int playlistId;
   final AppDatabase db;
+  final ThemeData theme;
   final VoidCallback onTap;
 
   const _PlaylistSongTile({
     required this.song,
     required this.playlistId,
     required this.db,
+    required this.theme,
     required this.onTap,
   });
 
@@ -295,7 +300,7 @@ class _PlaylistSongTile extends StatelessWidget {
         child: Container(
           width: 48,
           height: 48,
-          color: const Color(0xFF1A1A2E),
+          color: theme.colorScheme.surfaceVariant, // 🎯 FIXED: Dynamic icon container
           child: const Icon(Icons.music_note_rounded, color: Color(0xFF818CF8)),
         ),
       ),
@@ -303,17 +308,17 @@ class _PlaylistSongTile extends StatelessWidget {
         song.title ?? 'Unknown Track',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+        style: TextStyle(color: theme.textTheme.bodyLarge?.color, fontWeight: FontWeight.w500),
       ),
       subtitle: Text(
         song.artist ?? 'Unknown Artist',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(color: Colors.white.withOpacity(0.55), fontSize: 13),
+        style: TextStyle(color: theme.textTheme.bodyMedium?.color?.withOpacity(0.6), fontSize: 13),
       ),
       trailing: PopupMenuButton<String>(
-        icon: const Icon(Icons.more_vert_rounded, color: Colors.white54),
-        color: const Color(0xFF1A1A2E),
+        icon: Icon(Icons.more_vert_rounded, color: theme.iconTheme.color?.withOpacity(0.6)),
+        color: theme.cardColor, // 🎯 FIXED: Dynamic popup menu background
         onSelected: (value) async {
           if (value == 'remove') {
             final entries = await db.select(db.playlistEntries).get();

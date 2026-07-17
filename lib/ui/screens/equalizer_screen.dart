@@ -1,5 +1,10 @@
+// ============================================================
+//  SONIQ — lib/ui/screens/equalizer_screen.dart
+//  Hardware DSP Equalizer & Psychoacoustic Effects
+// ============================================================
+
 import 'dart:io';
-import 'dart:math'; // 🎯 FIXED: Added math library for 'pi'
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
@@ -18,7 +23,9 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
   bool _isEnabled = false;
   AndroidEqualizerParameters? _params;
   EqPreset _currentPreset = kBuiltinPresets[0];
+  
   double _bassBoostLevel = 0; 
+  double _virtualizerLevel = 0; 
 
   @override
   void initState() {
@@ -144,7 +151,7 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
                           _buildBassBooster(),
-                          _buildDummy3DKnob(),
+                          _buildVirtualizer(),
                         ],
                       ),
                     ),
@@ -208,31 +215,20 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
     return Column(
       children: [
         SleekCircularSlider(
-          min: 0,
-          max: 100,
-          initialValue: _bassBoostLevel,
+          min: 0, max: 100, initialValue: _bassBoostLevel,
           appearance: CircularSliderAppearance(
-            size: 130, 
-            angleRange: 240,
-            startAngle: 150,
+            size: 130, angleRange: 240, startAngle: 150,
             customColors: CustomSliderColors(
               trackColor: Colors.white10,
               progressBarColors: [const Color(0xFF00E5FF), const Color(0xFFB3FF00), const Color(0xFFFF9800)],
               dotColor: Colors.transparent, 
-              shadowColor: const Color(0xFF00E5FF).withOpacity(0.2), 
-              shadowMaxOpacity: 0.1,
-              shadowStep: 5,
+              shadowColor: const Color(0xFF00E5FF).withOpacity(0.2), shadowMaxOpacity: 0.1, shadowStep: 5,
             ),
-            customWidths: CustomSliderWidths(
-              trackWidth: 10,
-              progressBarWidth: 14,
-              handlerSize: 0,
-            ),
+            customWidths: CustomSliderWidths(trackWidth: 10, progressBarWidth: 14, handlerSize: 0),
           ),
           innerWidget: (percentage) {
             final double degrees = 150 + ((percentage / 100) * 240);
             final double radians = degrees * (pi / 180);
-
             return Transform.rotate(
               angle: radians,
               child: Padding(
@@ -240,11 +236,7 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
                 child: Container(
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: const RadialGradient(
-                      colors: [Color(0xFF2A2A2A), Color(0xFF0F0F0F)], 
-                      center: Alignment.topLeft,
-                      radius: 1.5,
-                    ),
+                    gradient: const RadialGradient(colors: [Color(0xFF2A2A2A), Color(0xFF0F0F0F)], center: Alignment.topLeft, radius: 1.5),
                     boxShadow: [
                       BoxShadow(color: Colors.black.withOpacity(0.8), blurRadius: 12, spreadRadius: 2),
                       BoxShadow(color: Colors.white.withOpacity(0.05), blurRadius: 2, spreadRadius: 1),
@@ -255,13 +247,8 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
                     child: Padding(
                       padding: const EdgeInsets.only(right: 8.0),
                       child: Container(
-                        width: 12,
-                        height: 3,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF00E5FF), 
-                          borderRadius: BorderRadius.circular(2),
-                          boxShadow: const [BoxShadow(color: Color(0xFF00E5FF), blurRadius: 6)],
-                        ),
+                        width: 12, height: 3,
+                        decoration: BoxDecoration(color: const Color(0xFF00E5FF), borderRadius: BorderRadius.circular(2), boxShadow: const [BoxShadow(color: Color(0xFF00E5FF), blurRadius: 6)]),
                       ),
                     ),
                   ),
@@ -272,14 +259,13 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
           onChange: _isEnabled ? (double value) {
             _bassBoostLevel = value;
             if (_params != null && _params!.bands.isNotEmpty) {
+              // 🎯 THE HACK: Manually push the 60Hz band to simulate Bass Boost
               final bassBand = _params!.bands[0];
               final targetGain = (value / 100) * _params!.maxDecibels;
               bassBand.setGain(targetGain);
               
               if (_currentPreset.id != 'custom') {
-                setState(() {
-                  _currentPreset = const EqPreset(id: 'custom', name: 'Custom', emoji: '🎛️', bands: []);
-                });
+                setState(() => _currentPreset = const EqPreset(id: 'custom', name: 'Custom', emoji: '🎛️', bands: []));
               }
             }
           } : null,
@@ -290,62 +276,73 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
     );
   }
 
-  Widget _buildDummy3DKnob() {
+  Widget _buildVirtualizer() {
     return Column(
       children: [
-        Opacity(
-          opacity: 0.4, 
-          child: SleekCircularSlider(
-            min: 0, max: 100, initialValue: 0,
-            appearance: CircularSliderAppearance(
-              size: 130,
-              angleRange: 240, startAngle: 150,
-              customColors: CustomSliderColors(
-                trackColor: Colors.white10,
-                progressBarColor: Colors.transparent,
-                dotColor: Colors.transparent,
-              ),
-              customWidths: CustomSliderWidths(trackWidth: 10, progressBarWidth: 0, handlerSize: 0),
+        SleekCircularSlider(
+          min: 0, max: 100, initialValue: _virtualizerLevel,
+          appearance: CircularSliderAppearance(
+            size: 130, angleRange: 240, startAngle: 150,
+            customColors: CustomSliderColors(
+              trackColor: Colors.white10,
+              progressBarColors: [const Color(0xFF9D00FF), const Color(0xFFFF007F)], 
+              dotColor: Colors.transparent, shadowColor: const Color(0xFF9D00FF).withOpacity(0.2), shadowMaxOpacity: 0.1, shadowStep: 5,
             ),
-            innerWidget: (percentage) {
-              return Transform.rotate(
-                // 🎯 FIXED: Cast explicitly as double (150.0)
-                angle: 150.0 * (pi / 180), 
-                child: Padding(
-                  padding: const EdgeInsets.all(22.0),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: const RadialGradient(
-                        colors: [Color(0xFF222222), Color(0xFF0A0A0A)],
-                        center: Alignment.topLeft, radius: 1.5,
-                      ),
-                      boxShadow: [
-                        BoxShadow(color: Colors.black.withOpacity(0.8), blurRadius: 12, spreadRadius: 2),
-                      ],
-                    ),
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 8.0),
-                        child: Container(
-                          width: 12, height: 3,
-                          decoration: BoxDecoration(
-                            color: Colors.white24, 
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
+            customWidths: CustomSliderWidths(trackWidth: 10, progressBarWidth: 14, handlerSize: 0),
+          ),
+          innerWidget: (percentage) {
+            final double degrees = 150 + ((percentage / 100) * 240);
+            final double radians = degrees * (pi / 180);
+            return Transform.rotate(
+              angle: radians, 
+              child: Padding(
+                padding: const EdgeInsets.all(22.0),
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const RadialGradient(colors: [Color(0xFF2A2A2A), Color(0xFF0F0F0F)], center: Alignment.topLeft, radius: 1.5),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(0.8), blurRadius: 12, spreadRadius: 2),
+                      BoxShadow(color: Colors.white.withOpacity(0.05), blurRadius: 2, spreadRadius: 1),
+                    ],
+                  ),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: Container(
+                        width: 12, height: 3,
+                        decoration: BoxDecoration(color: const Color(0xFF9D00FF), borderRadius: BorderRadius.circular(2), boxShadow: const [BoxShadow(color: Color(0xFF9D00FF), blurRadius: 6)]),
                       ),
                     ),
                   ),
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
+          onChange: _isEnabled ? (double value) {
+            _virtualizerLevel = value;
+            if (_params != null && _params!.bands.length >= 5) {
+              // 🎯 THE HACK: Psychoacoustic Spatialization
+              // Scoop the mids (910Hz) to create distance, boost the highs (14KHz) to create width.
+              final midBand = _params!.bands[2]; 
+              final highBand = _params!.bands[4]; 
+              
+              final spatialGain = (value / 100) * (_params!.maxDecibels * 0.8);
+              final midScoop = -(value / 100) * (_params!.maxDecibels * 0.5); 
+              
+              highBand.setGain(spatialGain);
+              midBand.setGain(midScoop);
+              
+              if (_currentPreset.id != 'custom') {
+                setState(() => _currentPreset = const EqPreset(id: 'custom', name: 'Custom', emoji: '🎛️', bands: []));
+              }
+            }
+          } : null,
         ),
         const SizedBox(height: 16),
-        Text("3D Surround", style: TextStyle(color: Colors.white.withOpacity(0.3), fontSize: 13, fontWeight: FontWeight.w500)),
+        Text("Virtualizer", style: TextStyle(color: _isEnabled ? Colors.white : Colors.white38, fontSize: 13, fontWeight: FontWeight.w500)),
       ],
     );
   }
-} // 🎯 FIXED: Missing closing bracket added here
+}

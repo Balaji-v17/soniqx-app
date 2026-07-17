@@ -8,7 +8,7 @@ import 'package:soniq/providers/auto_mix_provider.dart';
 import 'package:soniq/providers/library_filter_provider.dart';
 import 'package:soniq/ui/widgets/add_to_playlist_sheet.dart';
 import 'package:soniq/ui/widgets/manual_tag_sheet.dart';
-import 'package:soniq/ui/widgets/fallback_album_art.dart'; // 🎯 FIXED: Imported the new 3D fallback widget!
+import 'package:soniq/ui/widgets/fallback_album_art.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audio_service/audio_service.dart';
@@ -475,7 +475,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           itemCount: filteredSongs.length,
           itemExtent: 72.0,   
           cacheExtent: 500.0, 
-          itemBuilder: (context, index) => _RecentVerticalTile(song: filteredSongs[index], ref: ref),
+          itemBuilder: (context, index) => _RecentVerticalTile(
+            song: filteredSongs[index], 
+            ref: ref,
+            currentQueue: filteredSongs,
+            currentIndex: index,
+          ),
         );
       },
     );
@@ -490,7 +495,6 @@ class _AlbumArtWidget extends StatelessWidget {
   final double borderRadius;
   final double iconSize;
 
-  // 🎯 OPTIMIZED: Synchronous RAM cache. Kills the FutureBuilder rebuild loop.
   static final Map<String, Uri> _uriCache = {};
   static final Set<String> _noArtCache = {};
 
@@ -503,20 +507,16 @@ class _AlbumArtWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 1. Instant Cache Hit (Fast Path)
     if (_uriCache.containsKey(song.path)) {
       return RepaintBoundary(child: _buildImage(_uriCache[song.path]!));
     }
     
-    // 2. Known Missing Art (Fast Path)
-    // 🎯 FIXED: Replaced the old manual placeholder with the universal FallbackAlbumArt
     if (_noArtCache.contains(song.path)) {
       return RepaintBoundary(
         child: FallbackAlbumArt(width: size, height: size, borderRadius: borderRadius),
       );
     }
 
-    // 3. First Time Load (Async Path)
     return RepaintBoundary( 
       child: FutureBuilder<Uri?>(
         future: ArtworkExtractor.getArtUriFromPath(song.path),
@@ -527,11 +527,9 @@ class _AlbumArtWidget extends StatelessWidget {
               return _buildImage(snapshot.data!);
             } else {
               _noArtCache.add(song.path); 
-              // 🎯 FIXED: Connected async failure to universal fallback
               return FallbackAlbumArt(width: size, height: size, borderRadius: borderRadius);
             }
           }
-          // Show fallback while loading to prevent size jumping
           return FallbackAlbumArt(width: size, height: size, borderRadius: borderRadius); 
         },
       ),
@@ -547,7 +545,6 @@ class _AlbumArtWidget extends StatelessWidget {
         height: size,
         fit: BoxFit.cover,
         cacheWidth: (size * 2).toInt(), 
-        // 🎯 FIXED: Image.file errors are also caught and routed to the FallbackAlbumArt
         errorBuilder: (context, error, stackTrace) => FallbackAlbumArt(width: size, height: size, borderRadius: borderRadius),
       ),
     );
@@ -626,6 +623,7 @@ class _JumpBackInCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // 🎯 FIXED: Corrected the syntax error here
             _AlbumArtWidget(song: song, size: 140, borderRadius: 12, iconSize: 48),
             const SizedBox(height: 12),
             Text(song.title ?? 'Unknown Track', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: colorScheme.onBackground, fontSize: 15, fontWeight: FontWeight.bold)),
@@ -693,8 +691,16 @@ class _SmartMixCard extends ConsumerWidget {
 class _RecentVerticalTile extends StatelessWidget {
   final Song song;
   final WidgetRef ref;
+  
+  final List<Song> currentQueue; 
+  final int currentIndex;
 
-  const _RecentVerticalTile({required this.song, required this.ref});
+  const _RecentVerticalTile({
+    required this.song, 
+    required this.ref,
+    required this.currentQueue,
+    required this.currentIndex,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -712,16 +718,23 @@ class _RecentVerticalTile extends StatelessWidget {
       
       onTap: () async {
         final handler = ref.read(audioHandlerProvider);
-        final artUri = await ArtworkExtractor.getArtUriFromPath(song.path);
         
-        await handler.playMediaItem(MediaItem(
-          id: song.id.toString(), 
-          title: song.title ?? 'Unknown Track', 
-          artist: song.artist ?? 'Unknown Artist',
-          duration: Duration(milliseconds: song.durationMs ?? 0), 
-          artUri: artUri, 
-          extras: {'path': song.path},
-        ));
+        final queueItems = await Future.wait(currentQueue.map((s) async {
+          final artUri = await ArtworkExtractor.getArtUriFromPath(s.path);
+          return MediaItem(
+            id: s.id.toString(),
+            title: s.title ?? 'Unknown Track',
+            artist: s.artist ?? 'Unknown Artist',
+            duration: Duration(milliseconds: s.durationMs ?? 0),
+            artUri: artUri,
+            extras: {'path': s.path},
+          );
+        }));
+
+        await handler.updateQueue(queueItems);
+        await handler.setShuffleMode(AudioServiceShuffleMode.none);
+        await handler.skipToQueueItem(currentIndex);
+        await handler.play();
       },
 
       trailing: Row(
@@ -777,25 +790,6 @@ class _RecentVerticalTile extends StatelessWidget {
   }
 }
 
-class _StatItem extends StatelessWidget {
-  final String value;
-  final String label;
-
-  const _StatItem({required this.value, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Column(
-      children: [
-        Text(value, style: TextStyle(color: colorScheme.onBackground, fontSize: 18, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 4),
-        Text(label, style: TextStyle(color: colorScheme.onBackground.withOpacity(0.4), fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w600)),
-      ],
-    );
-  }
-}
-
 class RecentlyAddedScreen extends ConsumerWidget {
   const RecentlyAddedScreen({super.key});
 
@@ -829,10 +823,35 @@ class RecentlyAddedScreen extends ConsumerWidget {
             itemCount: recentSongs.length,
             itemExtent: 72.0,   
             cacheExtent: 500.0, 
-            itemBuilder: (context, index) => _RecentVerticalTile(song: recentSongs[index], ref: ref),
+            itemBuilder: (context, index) => _RecentVerticalTile(
+              song: recentSongs[index], 
+              ref: ref,
+              currentQueue: recentSongs,
+              currentIndex: index,
+            ),
           );
         },
       ),
+    );
+  }
+}
+
+// 🎯 FIXED: Re-added the missing _StatItem class here
+class _StatItem extends StatelessWidget {
+  final String value;
+  final String label;
+
+  const _StatItem({required this.value, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Column(
+      children: [
+        Text(value, style: TextStyle(color: colorScheme.onBackground, fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        Text(label, style: TextStyle(color: colorScheme.onBackground.withOpacity(0.4), fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w600)),
+      ],
     );
   }
 }

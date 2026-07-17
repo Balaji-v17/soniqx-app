@@ -17,7 +17,7 @@ import 'artwork_extractor.dart';
 import '../database/database.dart';
 
 class SoniqAudioHandler extends BaseAudioHandler with SeekHandler, QueueHandler {
-  // ─── PHASE 7: Advanced Audio Pipeline & Equalizer ──────────
+ // ─── PHASE 7: Advanced Audio Pipeline & Equalizer ──────────
   
   // 1. Initialize the native Android Equalizer
   final AndroidEqualizer equalizer = AndroidEqualizer();
@@ -25,7 +25,7 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler, QueueHandler 
   // 2. Audio Pipeline activated for Equalizer processing
   late final AudioPlayer _player = AudioPlayer(
     audioPipeline: AudioPipeline(
-      androidAudioEffects: [equalizer],
+      androidAudioEffects: [equalizer], // 🎯 FIXED: Removed the unsupported DSPs
     ),
   );
 

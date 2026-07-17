@@ -97,8 +97,12 @@ class LanguageService {
         final directory = p.dirname(song.path);
         final folderName = p.basename(directory).toLowerCase();
 
-        // 🚫 THE FIX: Stop Contagion! Do not run consensus on massive root folders.
-        const blacklistedFolders = {'0', 'emulated', 'download', 'downloads', 'music', 'audio'};
+        // 🚫 THE FIX: Stop Contagion! Do not run consensus on massive root dump folders.
+        const blacklistedFolders = {
+          '0', 'emulated', 'download', 'downloads', 'music', 'audio',
+          'com.video.fun.app', 'vidmate', 'telegram' // 🎯 ADDED: App-specific dump folders
+        };
+        
         if (blacklistedFolders.contains(folderName)) {
           print('🚫 Skipping consensus check for root dump folder: $folderName');
           continue; 
