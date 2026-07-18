@@ -4,12 +4,11 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch: # 🎯 ADDED: This creates a manual "Run workflow" button in GitHub!
+  workflow_dispatch: 
 
 jobs:
   build:
-# ... (leave the rest of the file exactly the same)
-    name: Build APK
+    name: Build APK and AAB
     runs-on: ubuntu-latest
 
     steps:
@@ -26,7 +25,6 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          # flutter-version: '3.29.0' 
 
       - name: Install Dependencies
         run: flutter pub get
@@ -37,15 +35,23 @@ jobs:
         run: |
           echo "$ENCODED_STRING" | base64 --decode > android/app/upload-keystore.jks
 
-      - name: Build Release APK
+      - name: Build Release APK & AAB
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           ALIAS: ${{ secrets.ALIAS }}
-        run: flutter build apk --release
+        run: |
+          flutter build apk --release
+          flutter build appbundle --release
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: soniq-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Upload AAB Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: soniq-release-aab
+          path: build/app/outputs/bundle/release/app-release.aab
