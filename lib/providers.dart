@@ -5,7 +5,8 @@
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:soniq/database/database.dart';
-import 'package:soniq/audio/soniq_audio_handler.dart';
+// 🎯 FIXED: Corrected the import to match the file we just built
+import 'package:soniq/audio/audio_handler.dart'; 
 import 'package:soniq/providers/library_filter_provider.dart';
 
 /// Provides global access to the Drift AppDatabase.

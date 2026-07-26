@@ -1136,13 +1136,11 @@
     "source": "musicbrainz",
     "confidence": "high"
   },
-  "sudheer moghe": {
-    "primary_language": "Hindi",
+  "dhee": {
+    "primary_language": "Tamil",
     "scores": {
-      "Hindi": 0.95
-    },
-    "source": "musicbrainz",
-    "confidence": "high"
+      "Tamil": 0.9,
+      "Telugu": 0.1
   },
   "night wings iii": {
     "primary_language": "Hindi",
@@ -34493,13 +34491,29 @@
     "source": "musicbrainz",
     "confidence": "medium"
   },
-  "dhanush": {
-    "primary_language": "Hindi",
+ "dhanush": {
+    "primary_language": "Tamil",
     "scores": {
-      "Hindi": 0.6
+      "Tamil": 0.9,
+      "Telugu": 0.05,
+      "Hindi": 0.05
     },
-    "source": "musicbrainz",
-    "confidence": "medium"
+    "source": "manual_override"
+  },
+  "v sridhar": {
+    "primary_language": "Kannada",
+    "scores": {
+      "Kannada": 1.0
+    },
+    "source": "manual_override"
+  },
+  "dhee": {
+    "primary_language": "Tamil",
+    "scores": {
+      "Tamil": 0.9,
+      "Telugu": 0.1
+    },
+    "source": "manual_override"
   },
   "rana daggubati": {
     "primary_language": "Hindi",
@@ -64957,4 +64971,3 @@
     "source": "manual",
     "confidence": "high"
   }
-}

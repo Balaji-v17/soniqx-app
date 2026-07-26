@@ -1,9 +1,5 @@
 // ============================================================
-//  SONIQ — lib/scanner/music_scanner.dart
-//
-//  Uses the native Pigeon AudioScannerApi for lightning-fast
-//  MediaProvider querying. Handles SQLite indexing and 
-//  background MD5 hashing for robust file-move detection.
+//  SONIQ — lib/audio/music_scanner.dart
 // ============================================================
 
 import 'dart:async';
@@ -14,10 +10,11 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:just_audio/just_audio.dart'; // 🎯 NEW: Required to extract true durations
 
 import 'package:soniq/src/pigeon/audio_scanner.g.dart';
 import '../database/database.dart';
-import '../classifier/language_service.dart'; // 🎯 We need this for the AI trigger!
+import '../classifier/language_service.dart';
 
 // ─── Progress Model ───────────────────────────────────────────
 
@@ -67,47 +64,35 @@ class MusicScanner {
   bool _isScanning = false;
   bool get isScanning => _isScanning;
 
-  // Public stream — attach to this in your UI widget
   Stream<ScanProgress> get progress => _progressCtrl.stream;
 
   MusicScanner(this._db);
 
   // ─── Public API ─────────────────────────────────────────────
 
-  /// Full scan + sync with the device library.
   Future<ScanResult> scanAndSync({bool computeHashes = false}) async {
     if (_isScanning) return ScanResult.alreadyRunning;
     _isScanning = true;
 
     try {
-      // ── Phase 1: Permission ──────────────────────────────────
       _emit(ScanPhase.requestingPermission);
       final granted = await _requestPermission();
       if (!granted) return ScanResult.permissionDenied;
 
-      // ── Phase 2: Fetch raw metadata from MediaStore ──────────
       _emit(ScanPhase.fetchingMetadata);
       final raw = await _api.querySongs();
-
-      // Strip out the null list and any null items so Dart knows it is safe!
       final cleanRaw = raw?.whereType<RawSongData>().toList() ?? [];
-
-      // Filter out files that might have slipped through with empty paths
       final songs = cleanRaw.where(_isValidMusic).toList();
 
-      // ── Phase 3: Incremental indexing ────────────────────────
       final existingIds = await _loadExistingIds();
       final scannedIds  = <int>{};
       final companions  = <SongsCompanion>[];
       int processed = 0;
 
       for (final song in songs) {
-        // GHOST FILE FILTER: Double check just in case!
         if (song.id == null || song.path == null) continue;
 
         processed++;
-
-        // Yield to event loop every 50 songs to keep UI responsive
         if (processed % 50 == 0) {
           _emit(ScanPhase.indexing,
               processed: processed,
@@ -116,18 +101,16 @@ class MusicScanner {
           await Future.delayed(Duration.zero);
         }
 
-        // We know id is not null because of the filter above, so we can use !
         scannedIds.add(song.id!); 
         companions.add(_mapToCompanion(song));
       }
 
-      // Final progress tick for indexing phase
       _emit(ScanPhase.indexing, processed: songs.length, total: songs.length);
-
-      // Batch upsert — Drift's own background isolate handles I/O
       await _db.songsDao.upsertSongs(companions);
 
-      // ── Phase 4: Mark removed songs as unavailable ───────────
+      // 🎯 NEW: Intercept the scan and backfill missing durations!
+      await _backfillMissingDurations(songs);
+
       _emit(ScanPhase.markingRemovals);
       final removedIds = existingIds
           .where((id) => !scannedIds.contains(id))
@@ -136,13 +119,11 @@ class MusicScanner {
         await _db.songsDao.markUnavailable(removedIds);
       }
 
-      // ── Phase 5 (optional): Background file hashing ──────────
       if (computeHashes) {
         _emit(ScanPhase.computingHashes);
         await _computeFileHashesInBackground(songs);
       }
 
-      // 🎯 THE FIX: Run the AI Classification Sweep right before completion!
       await LanguageService(_db).runClassificationPass();
 
       _emit(ScanPhase.complete, processed: songs.length, total: songs.length);
@@ -157,7 +138,6 @@ class MusicScanner {
     }
   }
 
-  /// Lightweight incremental check — call this on app resume.
   Future<ScanResult> incrementalSync() async {
     return scanAndSync(computeHashes: false);
   }
@@ -166,13 +146,37 @@ class MusicScanner {
     _progressCtrl.close();
   }
 
+  // ─── Duration Backfill ───────────────────────────────────────
+  
+  Future<void> _backfillMissingDurations(List<RawSongData> songs) async {
+    // Locate tracks where Android failed to extract the duration
+    final tracksToFix = songs.where((s) => (s.durationMs ?? 0) <= 0 && s.path != null && s.id != null).toList();
+    if (tracksToFix.isEmpty) return;
+
+    final player = AudioPlayer();
+    
+    for (final song in tracksToFix) {
+      try {
+        // Feed the path into JustAudio to extract the true duration
+        final duration = await player.setFilePath(song.path!);
+        if (duration != null && duration.inMilliseconds > 0) {
+          // Patch the local database
+          await (_db.update(_db.songs)..where((t) => t.id.equals(song.id!))).write(
+            SongsCompanion(durationMs: Value(duration.inMilliseconds)),
+          );
+        }
+      } catch (_) {
+        // Skip unreadable files
+      }
+    }
+    await player.dispose();
+  }
+
   // ─── Permission Handling ─────────────────────────────────────
   
   Future<bool> _requestPermission() async {
     if (!Platform.isAndroid) return true;
-
     final sdk = await _getAndroidSdk();
-
     if (sdk >= 33) {
       if (await Permission.audio.isGranted) return true;
       final result = await Permission.audio.request();
@@ -196,12 +200,10 @@ class MusicScanner {
   // ─── Music Validation Filter ─────────────────────────────────
   
   bool _isValidMusic(RawSongData song) {
-    // Extract path and safely check for null
     final path = song.path;
     if (path == null || path.trim().isEmpty) return false;
     if (song.id == null) return false;
     
-    // Must have a recognised audio extension
     const validExtensions = {
       '.mp3', '.flac', '.m4a', '.aac', '.ogg', '.opus',
       '.wav', '.wma', '.ape', '.aiff', '.alac',
@@ -211,40 +213,69 @@ class MusicScanner {
         : '';
     if (!validExtensions.contains(ext)) return false;
 
-  return true;
-}
+    return true;
+  }
 
   // ─── Column Mapping ──────────────────────────────────────────
   
   SongsCompanion _mapToCompanion(RawSongData song) {
-    // Safely handles title in case Pigeon generated it as nullable
-    final String? rawTitle = song.title;
-    final String? safeTitle = (rawTitle != null && rawTitle.trim().isNotEmpty) ? rawTitle.trim() : null;
-
     final String pathForEngine = song.path ?? '';
+    final String? rawTitle = song.title;
     
+    final safeTitle = (rawTitle != null && rawTitle.trim().isNotEmpty) 
+        ? rawTitle.trim() 
+        : (pathForEngine.isNotEmpty ? pathForEngine.split('/').last.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '') : 'Unknown Track');
+
+    final safeArtist = _cleanString(song.artist) ?? 'Unknown Artist';
+
+    String? parsedAlbum = _cleanString(song.album);
+    int finalAlbumId = song.albumId ?? 0;
+
+    if (parsedAlbum == null) {
+      String folderName = 'Local Tracks';
+      if (pathForEngine.isNotEmpty) {
+        final segments = pathForEngine.split('/');
+        if (segments.length > 1) {
+           final fName = segments[segments.length - 2].trim();
+           if (fName.isNotEmpty && fName != '0') folderName = fName;
+        }
+      }
+      
+      if (finalAlbumId > 0) {
+        parsedAlbum = safeArtist != 'Unknown Artist' ? '$folderName - $safeArtist' : '$folderName (Album)';
+      } else {
+        parsedAlbum = '$folderName (Loose Tracks)';
+        finalAlbumId = parsedAlbum.hashCode;
+      }
+    }
+
+    // 🎯 THE FIX: Identify 10-digit second timestamps and convert them to milliseconds
+    int rawDateAdded = song.dateAdded ?? 0;
+    if (rawDateAdded > 0 && rawDateAdded < 9999999999) {
+      rawDateAdded *= 1000; 
+    }
+
     return SongsCompanion(
       id:          Value(song.id ?? 0),
       title:       Value(safeTitle),
-      artist:      Value(_cleanString(song.artist)),
-      album:       Value(_cleanString(song.album)),
-      albumArtist: Value(_cleanString(song.albumArtist)),
+      artist:      Value(safeArtist),
+      album:       Value(parsedAlbum), 
+      albumArtist: Value(_cleanString(song.albumArtist) ?? safeArtist),
       trackNumber: Value(song.trackNumber == 0 ? null : song.trackNumber),
       discNumber:  Value(song.discNumber == 0 ? null : song.discNumber),
       year:        Value(song.year == 0 ? null : song.year),
       genre:       Value(_cleanString(song.genre)),
       durationMs:  Value(song.durationMs ?? 0),
       path:        Value(pathForEngine),
-      albumId:     Value(song.albumId ?? 0),
-      dateAdded:   Value(song.dateAdded ?? 0),
+      albumId:     Value(finalAlbumId), 
+      
+      dateAdded:   Value(rawDateAdded), // 👈 Safely converted milliseconds
+      
       fileHash:    const Value(null),
       isAvailable: const Value(true),
-      
-      // 🎯 THE FIX: These must default to null/0 so the AI engine catches them post-insert!
       languageTag:          const Value(null), 
       classifierConfidence: const Value(0.0),  
       wasManuallyTagged:    const Value(false),
-      
       dateScanned: Value(DateTime.now().millisecondsSinceEpoch),
     );
   }
@@ -258,21 +289,17 @@ class MusicScanner {
     return trimmed;
   }
 
-  // ─── Incremental Support ─────────────────────────────────────
-
   Future<Set<int>> _loadExistingIds() async {
     final songs = await _db.songsDao.watchAllAvailable().first;
     return songs.map((s) => s.id).toSet();
   }
 
-  // ─── Background File Hashing (Phase 5) ───────────────────────
-  
   Future<void> _computeFileHashesInBackground(List<RawSongData> songs) async {
     int processed = 0;
     final total = songs.length;
 
     for (final song in songs) {
-      if (song.id == null || song.path == null) continue; // Safety net
+      if (song.id == null || song.path == null) continue;
 
       processed++;
 
@@ -298,8 +325,6 @@ class MusicScanner {
     }
   }
 
-  // ─── Progress Helpers ────────────────────────────────────────
-
   void _emit(
     ScanPhase phase, {
     int processed = 0,
@@ -322,9 +347,8 @@ class MusicScanner {
       errorMessage: message,
     ));
   }
-} // 🎯 This correctly closes the MusicScanner class now!
+}
 
-// ─── Isolate-safe MD5 helper ─────────────────────────────────
 Future<String?> _computeMd5(String path) async {
   try {
     final file = File(path);

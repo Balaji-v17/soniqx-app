@@ -23,7 +23,7 @@
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:requestLegacyExternalStorage="true">
-        <activity
+       <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
@@ -35,6 +35,12 @@
             <meta-data
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme" />
+              
+            <!-- 🎯 NEW: Required by audio_service when using a custom MainActivity -->
+            <meta-data 
+              android:name="com.ryanheise.audioservice.activity.PROVIDES_BACKGROUND" 
+              android:value="true"/>
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>

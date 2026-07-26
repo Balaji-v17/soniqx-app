@@ -1,4 +1,4 @@
-import 'dart:io'; // 🎯 Added to read physical image files
+import 'dart:io'; 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audio_service/audio_service.dart';
@@ -11,8 +11,9 @@ import '../classifier/language_service.dart';
 import '../audio/artwork_extractor.dart';
 import '../providers.dart';
 import '../database/database.dart'; 
-import 'package:soniq/ui/widgets/fallback_album_art.dart'; // 🎯 Added your universal 3D fallback art
+import 'package:soniq/ui/widgets/fallback_album_art.dart'; 
 import 'song_tile.dart';
+import 'package:soniq/ui/screens/browse_screens.dart'; // 🎯 NEW: Import the Browse Screens
 
 class LibraryScreen extends ConsumerWidget {
   const LibraryScreen({super.key});
@@ -38,7 +39,6 @@ class LibraryScreen extends ConsumerWidget {
             );
           }
 
-          // 🎯 This forces the AI to scan the database and tag everything again!
           await ref.read(languageServiceProvider).runClassificationPass();
 
           if (context.mounted) {
@@ -57,6 +57,9 @@ class LibraryScreen extends ConsumerWidget {
             // 1. Header
             _buildHeader(),
             
+            // 🎯 NEW: Albums & Artists Entry Points
+            _buildBrowseCategories(context),
+
             // 2. Dynamic Filter Chips
             _buildFilterChips(context, ref),
 
@@ -183,6 +186,36 @@ class LibraryScreen extends ConsumerWidget {
     );
   }
 
+  // 🎯 NEW: Injecting the Browse Category Cards
+  SliverToBoxAdapter _buildBrowseCategories(BuildContext context) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        child: Row(
+          children: [
+            Expanded(
+              child: _LibraryCategoryCard(
+                title: 'Albums',
+                icon: Icons.album_rounded,
+                color: const Color(0xFF10B981), 
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AlbumsScreen())),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _LibraryCategoryCard(
+                title: 'Artists',
+                icon: Icons.person_rounded,
+                color: const Color(0xFFF59E0B), 
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ArtistsScreen())),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   SliverToBoxAdapter _buildFilterChips(BuildContext context, WidgetRef ref) {
     final activeFilter = ref.watch(libraryFilterProvider);
     final languages = ['All Tracks', 'Hindi', 'Kannada', 'Tamil', 'Telugu', 'English'];
@@ -261,7 +294,6 @@ class LibraryScreen extends ConsumerWidget {
     );
   }
 
-  // 🎯 CONNECTED TO SQLITE PLAY HISTORY
   SliverToBoxAdapter _buildJumpBackInList(WidgetRef ref) {
     final database = ref.watch(databaseProvider);
 
@@ -298,7 +330,6 @@ class LibraryScreen extends ConsumerWidget {
     );
   }
 
-  // 🎯 CONNECTED TO AI SMART MIXES
   SliverToBoxAdapter _buildMadeForYouList(WidgetRef ref) {
     final mixesAsync = ref.watch(autoMixProvider);
 
@@ -334,7 +365,47 @@ class LibraryScreen extends ConsumerWidget {
   }
 }
 
-// ─── NEW CONNECTED UI COMPONENTS ───
+// ─── CONNECTED UI COMPONENTS ────────────────────────────────────────
+
+class _LibraryCategoryCard extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _LibraryCategoryCard({
+    required this.title, 
+    required this.icon, 
+    required this.color, 
+    required this.onTap
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white12),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: color.withOpacity(0.2), shape: BoxShape.circle),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _LibraryRecentCard extends StatelessWidget {
   final Song song;
@@ -364,7 +435,6 @@ class _LibraryRecentCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 🎯 FIXED: Proper dynamic artwork loading with 3D Fallback implementation
             FutureBuilder<Uri?>(
               future: ArtworkExtractor.getArtUriFromPath(song.path),
               builder: (context, snapshot) {
@@ -380,7 +450,6 @@ class _LibraryRecentCard extends StatelessWidget {
                     ),
                   );
                 }
-                // Shows the proportional 3D widget while loading or if no art exists
                 return const FallbackAlbumArt(width: 140, height: 140, borderRadius: 12);
               },
             ),

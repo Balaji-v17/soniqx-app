@@ -6,10 +6,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:soniq/audio/audio_handler.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:soniq/providers.dart';
 import 'package:soniq/database/database.dart';
-import 'package:soniq/audio/soniq_audio_handler.dart';
 import 'package:soniq/audio/artwork_extractor.dart';
 import 'package:soniq/audio/shuffle_engine.dart';
 import 'package:soniq/ui/widgets/mini_player.dart';
@@ -291,18 +291,41 @@ class _PlaylistSongTile extends StatelessWidget {
     required this.onTap,
   });
 
+  // 🎯 FIXED: Re-added the missing fallback helper method
+  Widget _buildFallbackIcon(ThemeData theme) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8.0),
+      child: Container(
+        width: 48,
+        height: 48,
+        color: theme.colorScheme.surfaceVariant, 
+        child: const Icon(Icons.music_note_rounded, color: Color(0xFF818CF8)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 4.0),
-      leading: ClipRRect(
-        borderRadius: BorderRadius.circular(8.0),
-        child: Container(
-          width: 48,
-          height: 48,
-          color: theme.colorScheme.surfaceVariant, // 🎯 FIXED: Dynamic icon container
-          child: const Icon(Icons.music_note_rounded, color: Color(0xFF818CF8)),
-        ),
+      // 🎯 FIXED: Dynamic Album Art instead of static music note
+      leading: FutureBuilder<Uri?>(
+        future: ArtworkExtractor.getArtUriFromPath(song.path),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.done && snapshot.data != null) {
+            return ClipRRect(
+              borderRadius: BorderRadius.circular(8.0),
+              child: Image.file(
+                File(snapshot.data!.toFilePath()),
+                width: 48,
+                height: 48,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _buildFallbackIcon(theme),
+              ),
+            );
+          }
+          return _buildFallbackIcon(theme);
+        },
       ),
       title: Text(
         song.title ?? 'Unknown Track',
@@ -318,7 +341,7 @@ class _PlaylistSongTile extends StatelessWidget {
       ),
       trailing: PopupMenuButton<String>(
         icon: Icon(Icons.more_vert_rounded, color: theme.iconTheme.color?.withOpacity(0.6)),
-        color: theme.cardColor, // 🎯 FIXED: Dynamic popup menu background
+        color: theme.cardColor, 
         onSelected: (value) async {
           if (value == 'remove') {
             final entries = await db.select(db.playlistEntries).get();

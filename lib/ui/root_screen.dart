@@ -37,8 +37,6 @@ class _RootScreenState extends ConsumerState<RootScreen> {
           setState(() => _currentIndex = 0);
         }
       },
-      // 🎯 REMOVED: scaffoldBg override. The Scaffold automatically 
-      // pulls the correct background color from main.dart!
       child: Scaffold(
         body: Stack(
           children: [
@@ -59,8 +57,7 @@ class _RootScreenState extends ConsumerState<RootScreen> {
           ],
         ),
 
-        // 🎯 DYNAMIC NAVIGATION BAR: All manual color overrides removed.
-        // It now perfectly inherits the styles defined in main.dart's NavigationBarThemeData.
+        // 🎯 DYNAMIC NAVIGATION BAR: Consistent outlined -> rounded filled pairs
         bottomNavigationBar: NavigationBar(
           selectedIndex: _currentIndex,
           onDestinationSelected: (index) {
@@ -68,23 +65,23 @@ class _RootScreenState extends ConsumerState<RootScreen> {
           },
           destinations: const [
             NavigationDestination(
-              icon: Icon(Icons.library_music_outlined),
-              selectedIcon: Icon(Icons.library_music),
-              label: 'Library',
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home_filled),
+              label: 'Home',
             ),
             NavigationDestination(
-              icon: Icon(Icons.search_outlined),
-              selectedIcon: Icon(Icons.search),
+              icon: Icon(Icons.search_rounded),
+              selectedIcon: Icon(Icons.search_rounded),
               label: 'Search',
             ),
             NavigationDestination(
-              icon: Icon(Icons.queue_music_outlined),
-              selectedIcon: Icon(Icons.queue_music),
-              label: 'Playlists',
+              icon: Icon(Icons.library_music_outlined),
+              selectedIcon: Icon(Icons.library_music_rounded),
+              label: 'Library',
             ),
             NavigationDestination(
               icon: Icon(Icons.settings_outlined),
-              selectedIcon: Icon(Icons.settings),
+              selectedIcon: Icon(Icons.settings_rounded),
               label: 'Settings',
             ),
           ],

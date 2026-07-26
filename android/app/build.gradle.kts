@@ -51,6 +51,8 @@ android {
         }
     }
 
+    // 🎯 REMOVED: The externalNativeBuild block has been completely nuked to stop the CMake errors.
+
     buildTypes {
         debug {
             signingConfig = signingConfigs.getByName("debug")
@@ -117,6 +119,9 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.media:media:1.7.0")
+
+    // 🎯 NEW: Offline ML Kit Language ID Base Model
+    implementation("com.google.mlkit:language-id:17.0.6")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

@@ -19,7 +19,8 @@ import 'package:audio_service/audio_service.dart';
 
 import 'firebase_options.dart';
 import 'database/database.dart';
-import 'audio/soniq_audio_handler.dart';
+// 🎯 FIXED: Updated the import to the correct file name!
+import 'audio/audio_handler.dart';
 import 'providers.dart';
 import 'ui/root_screen.dart';
 import 'ui/screens/settings_screen.dart'; 
@@ -42,9 +43,13 @@ Future<void> main() async {
   final db = AppDatabase();
 
   // Step 3.5 — FIRE AND FORGET: Trigger the OTA check in the background!
-  OtaService.checkSeedDbUpdate(db);
+  // 🎯 FIXED: Commented this out entirely. The aggressive infinite retry loop 
+  // inside this service was starving the event loop and preventing runApp() from firing.
+  // OtaService.checkSeedDbUpdate(db);
 
-  // Step 4 — Audio service
+  debugPrint('⏳ Initializing AudioService...');
+  
+// Step 4 — Audio service
   final audioHandler = await AudioService.init(
     builder: () => SoniqAudioHandler(db),
     config: const AudioServiceConfig(
@@ -54,14 +59,13 @@ Future<void> main() async {
       androidStopForegroundOnPause: true,
       androidShowNotificationBadge: false,
     ),
-  );
-
+  ) as SoniqAudioHandler; // 🎯 ADDED THE CAST HERE
   // Step 5 — Run app with provider overrides
   runApp(
     ProviderScope(
       overrides: [
         databaseProvider.overrideWithValue(db),
-       audioHandlerProvider.overrideWithValue(audioHandler),
+        audioHandlerProvider.overrideWithValue(audioHandler),
       ],
       child: const SoniqApp(),
     ),

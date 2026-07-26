@@ -110,11 +110,16 @@ class FolderPathAnalyzer {
     for (final dirEntry in dirsToCheck) {
       final dirLower = dirEntry.key.toLowerCase();
       final weight   = dirEntry.value;
+      
       for (final langEntry in _folderKeywords.entries) {
         final lang     = langEntry.key;
         final keywords = langEntry.value;
+        
         for (final keyword in keywords) {
-          if (dirLower.contains(keyword.toLowerCase())) {
+          // 🎯 THE FIX: Use word boundaries (\b) to prevent substring traps!
+          // This ensures 'hind' only matches the word 'hind', not 'behindwoods'.
+          final regex = RegExp(r'\b' + RegExp.escape(keyword.toLowerCase()) + r'\b');
+          if (regex.hasMatch(dirLower)) {
             scores[lang] = [scores[lang] ?? 0.0, weight].reduce((a, b) => a > b ? a : b);
             break; 
           }
@@ -261,7 +266,9 @@ class FallbackClassifier {
     final topScore = sorted.first.value;
     final gap      = sorted.length > 1 ? topScore - sorted[1].value : topScore;
 
-    if (gap < 0.25 || topScore < 0.55) return null;
+    // 🎯 THE FIX: Require a massive confidence gap (0.45) for filename token lookups 
+    // to prevent common words like "baby" from hijacking the language tag.
+    if (gap < 0.45 || topScore < 0.70) return null;
 
     final confidence = topScore * 0.87;
     return FallbackClassificationResult(
@@ -320,7 +327,7 @@ class FallbackClassifier {
 
 class SiblingConsensusPass {
   static const double _consensusThreshold = 0.65; 
-  static const int    _minSiblingsNeeded  = 3;    
+  static const int    _minSiblingsNeeded  = 3;     
 
   static Map<String, _ConsensusResult> run({
     required List<String> unclassifiedPaths,

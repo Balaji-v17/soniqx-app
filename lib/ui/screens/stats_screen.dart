@@ -3,9 +3,11 @@
 //  Personalized Listening Statistics Dashboard.
 // ============================================================
 
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:soniq/providers/stats_provider.dart';
+import 'package:soniq/audio/artwork_extractor.dart';
 
 class StatsScreen extends ConsumerWidget {
   const StatsScreen({super.key});
@@ -104,14 +106,46 @@ class StatsScreen extends ConsumerWidget {
                         children: [
                           ListTile(
                             contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                            leading: Text(
-                              '#${index + 1}',
-                              style: TextStyle(
-                                color: index == 0 ? const Color(0xFF6366F1) : Colors.white38,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
+                            
+                            // 🎯 FIXED: Rank numbers and Album Art side-by-side
+                            leading: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox(
+                                  width: 36,
+                                  child: Text(
+                                    '#${index + 1}',
+                                    style: TextStyle(
+                                      color: index < 3 ? const Color(0xFF6366F1) : Colors.white38,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                if (song['path'] != null)
+                                  FutureBuilder<Uri?>(
+                                    future: ArtworkExtractor.getArtUriFromPath(song['path']),
+                                    builder: (context, snapshot) {
+                                      if (snapshot.connectionState == ConnectionState.done && snapshot.data != null) {
+                                        return ClipRRect(
+                                          borderRadius: BorderRadius.circular(8.0),
+                                          child: Image.file(
+                                            File(snapshot.data!.toFilePath()),
+                                            width: 44,
+                                            height: 44,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) => _buildStatsFallback(),
+                                          ),
+                                        );
+                                      }
+                                      return _buildStatsFallback();
+                                    },
+                                  )
+                                else
+                                  _buildStatsFallback(),
+                              ],
                             ),
+                            
                             title: Text(song['title'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
                             subtitle: Text(song['artist'], style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13)),
                             trailing: Text(
@@ -136,6 +170,19 @@ class StatsScreen extends ConsumerWidget {
             const SizedBox(height: 120), // Mini-player padding
           ],
         ),
+      ),
+    );
+  }
+
+  // 🎯 Helper for fallback album art
+  Widget _buildStatsFallback() {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8.0),
+      child: Container(
+        width: 44,
+        height: 44,
+        color: Colors.white10,
+        child: const Icon(Icons.music_note_rounded, color: Color(0xFF818CF8), size: 20),
       ),
     );
   }

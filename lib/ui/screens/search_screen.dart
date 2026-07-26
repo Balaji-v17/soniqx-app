@@ -6,11 +6,11 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:soniq/audio/audio_handler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:soniq/providers.dart';
 import 'package:soniq/database/database.dart';
-import 'package:soniq/audio/soniq_audio_handler.dart';
 
 // Riverpod provider to hold the current, debounced search query
 final searchQueryProvider = StateProvider<String>((ref) => '');

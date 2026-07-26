@@ -8,8 +8,14 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audio_service/audio_service.dart';
+import 'package:share_plus/share_plus.dart'; 
 import 'package:soniq/providers.dart';
-import 'package:soniq/ui/widgets/fallback_album_art.dart'; // 🎯 FIXED: Added the missing import!
+import 'package:soniq/ui/widgets/fallback_album_art.dart';
+import 'package:soniq/ui/screens/equalizer_screen.dart'; 
+import 'package:soniq/ui/sheets/queue_sheet.dart'; 
+import 'package:soniq/ui/screens/browse_screens.dart'; 
+import 'package:soniq/ui/widgets/add_to_playlist_sheet.dart'; 
+import 'package:soniq/database/database.dart'; // Ensure Song type is visible
 
 class FullPlayerSheet extends ConsumerWidget {
   const FullPlayerSheet({super.key});
@@ -18,6 +24,7 @@ class FullPlayerSheet extends ConsumerWidget {
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF121212),
+      isScrollControlled: true, 
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -52,14 +59,29 @@ class FullPlayerSheet extends ConsumerWidget {
                   Image.file(
                     artFile,
                     fit: BoxFit.cover,
+                    width: double.infinity,
+                    height: double.infinity,
                     errorBuilder: (_, __, ___) => const DefaultBackgroundGradient(),
                   )
                 else
                   const DefaultBackgroundGradient(),
                 
+                // Ultra-Premium Glassmorphic Blur with Gradient
                 BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 50.0, sigmaY: 50.0),
-                  child: Container(color: Colors.black.withOpacity(0.6)),
+                  filter: ImageFilter.blur(sigmaX: 80.0, sigmaY: 80.0), 
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withOpacity(0.3), 
+                          Colors.black.withOpacity(0.6), 
+                          const Color(0xFF050505).withOpacity(0.95), 
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
 
                 // 2. Foreground UI
@@ -90,6 +112,16 @@ class FullPlayerSheet extends ConsumerWidget {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 IconButton(
+                                  icon: const Icon(Icons.tune_rounded, color: Colors.white, size: 26),
+                                  tooltip: 'Equalizer',
+                                  onPressed: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(builder: (context) => const EqualizerScreen()),
+                                    );
+                                  },
+                                ),
+                                IconButton(
                                   icon: const Icon(Icons.bedtime_outlined, color: Colors.white, size: 26),
                                   tooltip: 'Sleep Timer',
                                   onPressed: () {
@@ -112,38 +144,51 @@ class FullPlayerSheet extends ConsumerWidget {
                       ),
 
                       const Spacer(flex: 1),
-                      Hero(
-                        tag: 'album_art_${mediaItem.id}',
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(20.0),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.2),
-                                blurRadius: 30,
-                                offset: const Offset(0, 15),
+                      
+                      // Animated Artwork based on Playback State
+                      StreamBuilder<PlaybackState>(
+                        stream: audioHandler.playbackState,
+                        builder: (context, stateSnapshot) {
+                          final playing = stateSnapshot.data?.playing ?? false;
+                          
+                          return AnimatedScale(
+                            scale: playing ? 1.0 : 0.85, 
+                            duration: const Duration(milliseconds: 600),
+                            curve: Curves.easeOutCubic,
+                            child: Hero(
+                              tag: 'album_art_${mediaItem.id}',
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 600),
+                                curve: Curves.easeOutCubic,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(20.0),
+                                  boxShadow: playing 
+                                    ? [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 40, offset: const Offset(0, 20))]
+                                    : [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))],
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(20.0), 
+                                  child: (artFile != null && artFile.existsSync())
+                                      ? Image.file(
+                                          artFile,
+                                          width: 320,
+                                          height: 320,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) => FallbackAlbumArt(width: 320, height: 320, borderRadius: 20.0, shadowOpacity: 0.3),
+                                        )
+                                      : const FallbackAlbumArt(
+                                          width: 320, 
+                                          height: 320, 
+                                          borderRadius: 20.0, 
+                                          shadowOpacity: 0.3,
+                                        ),
+                                ),
                               ),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(20.0), 
-                            child: (artFile != null && artFile.existsSync())
-                                ? Image.file(
-                                    artFile,
-                                    width: 320,
-                                    height: 320,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) => FallbackAlbumArt(width: 320, height: 320, borderRadius: 20.0, shadowOpacity: 0.3),
-                                  )
-                                : FallbackAlbumArt(
-                                    width: 320, 
-                                    height: 320, 
-                                    borderRadius: 20.0, 
-                                    shadowOpacity: 0.3,
-                                  ),
-                          ),
-                        ),
-                      ), 
+                            ),
+                          );
+                        }
+                      ),
+                      
                       const Spacer(flex: 1),
 
                       // Song Info
@@ -190,6 +235,32 @@ class FullPlayerSheet extends ConsumerWidget {
                       _PlayerControls(audioHandler: audioHandler),
 
                       const Spacer(flex: 2),
+
+                      // Dedicated Bottom Row for the Queue Button
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 24.0, left: 24.0, right: 24.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.queue_music_rounded, color: Colors.white54),
+                              iconSize: 28,
+                              tooltip: 'Up Next',
+                              onPressed: () {
+                                showModalBottomSheet(
+                                  context: context,
+                                  backgroundColor: Colors.transparent,
+                                  isScrollControlled: true,
+                                  builder: (context) => SizedBox(
+                                    height: MediaQuery.of(context).size.height * 0.75, 
+                                    child: const QueueSheet(),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -212,79 +283,204 @@ class _OptionsContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 16.0, bottom: 32.0, left: 8.0, right: 8.0),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 40,
-            height: 4,
-            margin: const EdgeInsets.only(bottom: 16.0),
-            decoration: BoxDecoration(
-              color: Colors.white24,
-              borderRadius: BorderRadius.circular(2),
+    final db = ref.watch(databaseProvider);
+    final songId = int.tryParse(mediaItem.id) ?? -1;
+    final path = mediaItem.extras?['path'] as String?;
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.only(top: 16.0, bottom: 16.0, left: 8.0, right: 8.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Handle bar
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 16.0),
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
-          ListTile(
-            leading: const Icon(Icons.info_outline_rounded, color: Colors.white70),
-            title: const Text("Song Details", style: TextStyle(color: Colors.white, fontSize: 16)),
-            onTap: () {
-              Navigator.pop(context);
-              _showDetailsDialog(context, mediaItem);
-            },
-          ),
-          
-          ListTile(
-            leading: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
-            title: const Text("Delete from device", style: TextStyle(color: Colors.redAccent, fontSize: 16)),
-            onTap: () => _deleteSong(context, ref),
-          ),
-
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-            child: Divider(color: Colors.white12),
-          ),
-
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
-            child: StreamBuilder<double>(
-              stream: (audioHandler as dynamic).player.volumeStream,
-              builder: (context, snapshot) {
-                final volume = snapshot.data ?? 1.0;
-                
-                return Row(
+            
+            Flexible(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    IconButton(
-                      icon: const Icon(Icons.volume_down_rounded, color: Colors.white70),
-                      onPressed: () => (audioHandler as dynamic).setVolume((volume - 0.1).clamp(0.0, 1.0)),
+                    // 1. Add/Remove Favorite
+                    StreamBuilder<bool>(
+                      stream: db.playlistsDao.watchIsFavorite(songId),
+                      builder: (context, snapshot) {
+                        final isFavorite = snapshot.data ?? false;
+                        return ListTile(
+                          leading: Icon(
+                            isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded, 
+                            color: isFavorite ? const Color(0xFF6366F1) : Colors.white70
+                          ),
+                          title: Text(isFavorite ? "Remove from Favorites" : "Add to Favorites", style: const TextStyle(color: Colors.white, fontSize: 16)),
+                          onTap: () {
+                            db.playlistsDao.toggleFavorite(songId);
+                            Navigator.pop(context);
+                          },
+                        );
+                      }
                     ),
-                    Expanded(
-                      child: SliderTheme(
-                        data: SliderThemeData(
-                          trackHeight: 4.0,
-                          activeTrackColor: const Color(0xFF818CF8),
-                          inactiveTrackColor: Colors.white.withOpacity(0.1),
-                          thumbColor: Colors.white,
-                          overlayColor: const Color(0xFF818CF8).withOpacity(0.2),
-                          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.0),
-                        ),
-                        child: Slider(
-                          value: volume,
-                          onChanged: (val) => (audioHandler as dynamic).setVolume(val),
-                        ),
+
+                    // 2. Add to Playlist
+                    ListTile(
+                      leading: const Icon(Icons.playlist_add_rounded, color: Colors.white70),
+                      title: const Text("Add to Playlist", style: TextStyle(color: Colors.white, fontSize: 16)),
+                      onTap: () {
+                        Navigator.pop(context);
+                        AddToPlaylistSheet.show(context, songId);
+                      },
+                    ),
+
+                    // 3. View Album (🎯 FIXED: Queries the actual DB using songId)
+                    ListTile(
+                      leading: const Icon(Icons.album_rounded, color: Colors.white70),
+                      title: const Text("View Album", style: TextStyle(color: Colors.white, fontSize: 16)),
+                      onTap: () async {
+                        Navigator.pop(context);
+                        final songs = await db.songsDao.watchAllAvailable().first;
+                        
+                        Song? currentSong;
+                        try {
+                          currentSong = songs.firstWhere((s) => s.id == songId);
+                        } catch (_) {}
+
+                        final targetAlbum = currentSong?.album?.trim() ?? '';
+                        
+                        if (context.mounted) {
+                          if (targetAlbum.isNotEmpty) {
+                            final albumSongs = songs.where((s) => (s.album?.trim() ?? '') == targetAlbum).toList();
+                            Navigator.push(context, MaterialPageRoute(builder: (_) => CategoryDetailScreen(title: targetAlbum, songs: albumSongs)));
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                              content: Text('Album information missing for this track.'),
+                              backgroundColor: Color(0xFF6366F1),
+                            ));
+                          }
+                        }
+                      },
+                    ),
+
+                    // 4. View Artist (🎯 FIXED: Queries the actual DB using songId)
+                    ListTile(
+                      leading: const Icon(Icons.person_outline_rounded, color: Colors.white70),
+                      title: const Text("View Artist", style: TextStyle(color: Colors.white, fontSize: 16)),
+                      onTap: () async {
+                        Navigator.pop(context);
+                        final songs = await db.songsDao.watchAllAvailable().first;
+                        
+                        Song? currentSong;
+                        try {
+                          currentSong = songs.firstWhere((s) => s.id == songId);
+                        } catch (_) {}
+
+                        final targetArtist = currentSong?.artist?.trim() ?? '';
+                        
+                        if (context.mounted) {
+                          if (targetArtist.isNotEmpty && targetArtist.toLowerCase() != 'unknown artist') {
+                            final artistSongs = songs.where((s) => (s.artist?.trim() ?? '') == targetArtist).toList();
+                            Navigator.push(context, MaterialPageRoute(builder: (_) => CategoryDetailScreen(title: targetArtist, songs: artistSongs)));
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                              content: Text('Artist information missing for this track.'),
+                              backgroundColor: Color(0xFF6366F1),
+                            ));
+                          }
+                        }
+                      },
+                    ),
+
+                    // 5. Share
+                    ListTile(
+                      leading: const Icon(Icons.share_rounded, color: Colors.white70),
+                      title: const Text("Share", style: TextStyle(color: Colors.white, fontSize: 16)),
+                      onTap: () async {
+                        Navigator.pop(context);
+                        if (path != null) {
+                          await Share.shareXFiles([XFile(path)], text: 'Listening to ${mediaItem.title} on Soniq!');
+                        }
+                      },
+                    ),
+
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 4.0, horizontal: 16.0),
+                      child: Divider(color: Colors.white12),
+                    ),
+
+                    // 6. Song Details
+                    ListTile(
+                      leading: const Icon(Icons.info_outline_rounded, color: Colors.white70),
+                      title: const Text("Song Details", style: TextStyle(color: Colors.white, fontSize: 16)),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _showDetailsDialog(context, mediaItem);
+                      },
+                    ),
+                    
+                    // 7. Delete
+                    ListTile(
+                      leading: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+                      title: const Text("Delete from device", style: TextStyle(color: Colors.redAccent, fontSize: 16)),
+                      onTap: () => _deleteSong(context, ref),
+                    ),
+
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+                      child: Divider(color: Colors.white12),
+                    ),
+
+                    // 8. Volume Slider
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+                      child: StreamBuilder<double>(
+                        stream: (audioHandler as dynamic).player.volumeStream,
+                        builder: (context, snapshot) {
+                          final volume = snapshot.data ?? 1.0;
+                          
+                          return Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.volume_down_rounded, color: Colors.white70),
+                                onPressed: () => (audioHandler as dynamic).setVolume((volume - 0.1).clamp(0.0, 1.0)),
+                              ),
+                              Expanded(
+                                child: SliderTheme(
+                                  data: SliderThemeData(
+                                    trackHeight: 4.0,
+                                    activeTrackColor: const Color(0xFF818CF8),
+                                    inactiveTrackColor: Colors.white.withOpacity(0.1),
+                                    thumbColor: Colors.white,
+                                    overlayColor: const Color(0xFF818CF8).withOpacity(0.2),
+                                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.0),
+                                  ),
+                                  child: Slider(
+                                    value: volume,
+                                    onChanged: (val) => (audioHandler as dynamic).setVolume(val),
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.volume_up_rounded, color: Colors.white70),
+                                onPressed: () => (audioHandler as dynamic).setVolume((volume + 0.1).clamp(0.0, 1.0)),
+                              ),
+                            ],
+                          );
+                        },
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.volume_up_rounded, color: Colors.white70),
-                      onPressed: () => (audioHandler as dynamic).setVolume((volume + 0.1).clamp(0.0, 1.0)),
-                    ),
                   ],
-                );
-              },
+                ),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -422,8 +618,7 @@ class DefaultPlaceholderArt extends StatelessWidget {
   }
 }
 
-// ─── Interactive Seek Bar Component ──────────────────────────────────
-
+// ─── Interactive Seek Bar Component (🎯 FIXED: Using raw duration stream)
 class _PlayerSeekBar extends StatefulWidget {
   final AudioHandler audioHandler;
   final MediaItem mediaItem;
@@ -446,57 +641,73 @@ class _PlayerSeekBarState extends State<_PlayerSeekBar> {
 
   @override
   Widget build(BuildContext context) {
-    final totalDuration = widget.mediaItem.duration ?? Duration.zero;
+    // 🎯 THE FIX: Listen directly to the raw JustAudio engine's duration stream
+    return StreamBuilder<Duration?>(
+      stream: (widget.audioHandler as dynamic).player.durationStream,
+      builder: (context, durationSnapshot) {
+        final totalDuration = durationSnapshot.data ?? widget.mediaItem.duration ?? Duration.zero;
 
-    return StreamBuilder<Duration>(
-      stream: AudioService.position,
-      builder: (context, snapshot) {
-        final position = snapshot.data ?? Duration.zero;
-        
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          child: Column(
-            children: [
-              SliderTheme(
-                data: SliderThemeData(
-                  trackHeight: 4.0,
-                  activeTrackColor: const Color(0xFF818CF8),
-                  inactiveTrackColor: Colors.white.withOpacity(0.1),
-                  thumbColor: Colors.white,
-                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.0),
-                  overlayColor: const Color(0xFF818CF8).withOpacity(0.2),
-                ),
-                child: Slider(
-                  value: _dragValue ?? position.inMilliseconds.toDouble().clamp(0.0, totalDuration.inMilliseconds.toDouble()),
-                  max: totalDuration.inMilliseconds.toDouble() > 0 ? totalDuration.inMilliseconds.toDouble() : 1.0,
-                  onChanged: (value) {
-                    setState(() {
-                      _dragValue = value;
-                    });
-                  },
-                  onChangeEnd: (value) {
-                    widget.audioHandler.seek(Duration(milliseconds: value.round()));
-                    setState(() {
-                      _dragValue = null;
-                    });
-                  },
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      _formatDuration(_dragValue != null ? Duration(milliseconds: _dragValue!.round()) : position), 
-                      style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
+        return StreamBuilder<Duration>(
+          stream: AudioService.position,
+          builder: (context, positionSnapshot) {
+            final position = positionSnapshot.data ?? Duration.zero;
+            
+            // Safe max value to prevent Slider crash when duration is 0
+            final double safeMax = totalDuration.inMilliseconds.toDouble() > 0 
+                ? totalDuration.inMilliseconds.toDouble() 
+                : 1.0;
+                
+            final double safeValue = _dragValue ?? position.inMilliseconds.toDouble().clamp(0.0, safeMax);
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              child: Column(
+                children: [
+                  SliderTheme(
+                    data: SliderThemeData(
+                      trackHeight: 4.0,
+                      activeTrackColor: const Color(0xFF818CF8),
+                      inactiveTrackColor: Colors.white.withOpacity(0.1),
+                      thumbColor: Colors.white,
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.0),
+                      overlayColor: const Color(0xFF818CF8).withOpacity(0.2),
                     ),
-                    Text(_formatDuration(totalDuration), style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)),
-                  ],
-                ),
+                    child: Slider(
+                      value: safeValue,
+                      max: safeMax,
+                      onChanged: (value) {
+                        setState(() {
+                          _dragValue = value;
+                        });
+                      },
+                      onChangeEnd: (value) {
+                        widget.audioHandler.seek(Duration(milliseconds: value.round()));
+                        setState(() {
+                          _dragValue = null;
+                        });
+                      },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _formatDuration(_dragValue != null ? Duration(milliseconds: _dragValue!.round()) : position), 
+                          style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
+                        ),
+                        Text(
+                          _formatDuration(totalDuration), 
+                          style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -529,7 +740,7 @@ class _PlayerControls extends StatelessWidget {
             : Icons.repeat_rounded;
 
         return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [

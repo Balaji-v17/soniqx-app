@@ -87,6 +87,9 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
       appBar: AppBar(
@@ -98,7 +101,7 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
           Switch(
             value: _isEnabled,
             onChanged: _toggleEqualizer,
-            activeColor: const Color(0xFFC49A45),
+            activeColor: colorScheme.primary, // 🎯 Brand unified
             inactiveTrackColor: Colors.white10,
           ),
           const SizedBox(width: 16),
@@ -107,7 +110,7 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
       body: !Platform.isAndroid
           ? const Center(child: Text("Equalizer is only supported on Android.", style: TextStyle(color: Colors.white54)))
           : _params == null
-              ? const Center(child: CircularProgressIndicator(color: Color(0xFFC49A45)))
+              ? Center(child: CircularProgressIndicator(color: colorScheme.primary))
               : Column(
                   children: [
                     const SizedBox(height: 16),
@@ -125,9 +128,9 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
                             child: ChoiceChip(
                               label: Text('${preset.emoji} ${preset.name}', style: TextStyle(color: isSelected ? Colors.white : Colors.white70)),
                               selected: isSelected,
-                              selectedColor: const Color(0xFFC49A45).withOpacity(0.3),
+                              selectedColor: colorScheme.primary.withOpacity(0.3), // 🎯 Brand unified
                               backgroundColor: const Color(0xFF1E1E1E),
-                              side: BorderSide(color: isSelected ? const Color(0xFFC49A45) : Colors.transparent),
+                              side: BorderSide(color: isSelected ? colorScheme.primary : Colors.transparent), // 🎯 Brand unified
                               onSelected: (_) => _applyPreset(preset),
                             ),
                           );
@@ -140,7 +143,7 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: _params!.bands.map((band) {
-                          return _buildSlider(band);
+                          return _buildSlider(band, colorScheme);
                         }).toList(),
                       ),
                     ),
@@ -150,8 +153,8 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          _buildBassBooster(),
-                          _buildVirtualizer(),
+                          _buildBassBooster(colorScheme),
+                          _buildVirtualizer(colorScheme),
                         ],
                       ),
                     ),
@@ -161,7 +164,7 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
     );
   }
 
-  Widget _buildSlider(AndroidEqualizerBand band) {
+  Widget _buildSlider(AndroidEqualizerBand band, ColorScheme colorScheme) {
     String freqLabel;
     if (band.centerFrequency >= 1000) {
       freqLabel = '${(band.centerFrequency / 1000).toStringAsFixed(0)}K';
@@ -177,10 +180,10 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
             child: SliderTheme(
               data: SliderThemeData(
                 trackHeight: 6, 
-                activeTrackColor: const Color(0xFF00E5FF), 
+                activeTrackColor: colorScheme.primary, // 🎯 Brand unified
                 inactiveTrackColor: Colors.white10,
                 thumbColor: const Color(0xFF1E1E1E), 
-                overlayColor: const Color(0xFF00E5FF).withOpacity(0.2),
+                overlayColor: colorScheme.primary.withOpacity(0.2), // 🎯 Brand unified
                 thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10, elevation: 6, pressedElevation: 10),
               ),
               child: StreamBuilder<double>(
@@ -211,7 +214,7 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
     );
   }
 
-  Widget _buildBassBooster() {
+  Widget _buildBassBooster(ColorScheme colorScheme) {
     return Column(
       children: [
         SleekCircularSlider(
@@ -220,9 +223,13 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
             size: 130, angleRange: 240, startAngle: 150,
             customColors: CustomSliderColors(
               trackColor: Colors.white10,
-              progressBarColors: [const Color(0xFF00E5FF), const Color(0xFFB3FF00), const Color(0xFFFF9800)],
+              progressBarColors: [
+                colorScheme.primary.withOpacity(0.6),
+                colorScheme.primary.withOpacity(0.8),
+                colorScheme.primary,
+              ], // 🎯 Brand unified custom gradient flow
               dotColor: Colors.transparent, 
-              shadowColor: const Color(0xFF00E5FF).withOpacity(0.2), shadowMaxOpacity: 0.1, shadowStep: 5,
+              shadowColor: colorScheme.primary.withOpacity(0.2), shadowMaxOpacity: 0.1, shadowStep: 5,
             ),
             customWidths: CustomSliderWidths(trackWidth: 10, progressBarWidth: 14, handlerSize: 0),
           ),
@@ -248,7 +255,7 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
                       padding: const EdgeInsets.only(right: 8.0),
                       child: Container(
                         width: 12, height: 3,
-                        decoration: BoxDecoration(color: const Color(0xFF00E5FF), borderRadius: BorderRadius.circular(2), boxShadow: const [BoxShadow(color: Color(0xFF00E5FF), blurRadius: 6)]),
+                        decoration: BoxDecoration(color: colorScheme.primary, borderRadius: BorderRadius.circular(2), boxShadow: [BoxShadow(color: colorScheme.primary, blurRadius: 6)]),
                       ),
                     ),
                   ),
@@ -259,7 +266,6 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
           onChange: _isEnabled ? (double value) {
             _bassBoostLevel = value;
             if (_params != null && _params!.bands.isNotEmpty) {
-              // 🎯 THE HACK: Manually push the 60Hz band to simulate Bass Boost
               final bassBand = _params!.bands[0];
               final targetGain = (value / 100) * _params!.maxDecibels;
               bassBand.setGain(targetGain);
@@ -276,7 +282,7 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
     );
   }
 
-  Widget _buildVirtualizer() {
+  Widget _buildVirtualizer(ColorScheme colorScheme) {
     return Column(
       children: [
         SleekCircularSlider(
@@ -285,8 +291,11 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
             size: 130, angleRange: 240, startAngle: 150,
             customColors: CustomSliderColors(
               trackColor: Colors.white10,
-              progressBarColors: [const Color(0xFF9D00FF), const Color(0xFFFF007F)], 
-              dotColor: Colors.transparent, shadowColor: const Color(0xFF9D00FF).withOpacity(0.2), shadowMaxOpacity: 0.1, shadowStep: 5,
+              progressBarColors: [
+                colorScheme.inversePrimary, 
+                colorScheme.primary,
+              ], // 🎯 Brand unified secondary design palette shifts
+              dotColor: Colors.transparent, shadowColor: colorScheme.primary.withOpacity(0.2), shadowMaxOpacity: 0.1, shadowStep: 5,
             ),
             customWidths: CustomSliderWidths(trackWidth: 10, progressBarWidth: 14, handlerSize: 0),
           ),
@@ -312,7 +321,7 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
                       padding: const EdgeInsets.only(right: 8.0),
                       child: Container(
                         width: 12, height: 3,
-                        decoration: BoxDecoration(color: const Color(0xFF9D00FF), borderRadius: BorderRadius.circular(2), boxShadow: const [BoxShadow(color: Color(0xFF9D00FF), blurRadius: 6)]),
+                        decoration: BoxDecoration(color: colorScheme.primary, borderRadius: BorderRadius.circular(2), boxShadow: [BoxShadow(color: colorScheme.primary, blurRadius: 6)]),
                       ),
                     ),
                   ),
@@ -323,8 +332,6 @@ class _EqualizerScreenState extends ConsumerState<EqualizerScreen> {
           onChange: _isEnabled ? (double value) {
             _virtualizerLevel = value;
             if (_params != null && _params!.bands.length >= 5) {
-              // 🎯 THE HACK: Psychoacoustic Spatialization
-              // Scoop the mids (910Hz) to create distance, boost the highs (14KHz) to create width.
               final midBand = _params!.bands[2]; 
               final highBand = _params!.bands[4]; 
               

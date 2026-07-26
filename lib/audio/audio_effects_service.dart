@@ -6,8 +6,8 @@
 import 'dart:async'; // 🎯 Added for TimeoutException
 import 'package:just_audio/just_audio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:soniq/audio/audio_handler.dart';
 import 'package:soniq/providers.dart'; 
-import 'package:soniq/audio/soniq_audio_handler.dart';
 
 final audioEffectsProvider = Provider<AudioEffectsService>((ref) {
   final handler = ref.watch(audioHandlerProvider);

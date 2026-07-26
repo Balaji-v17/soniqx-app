@@ -1,17 +1,20 @@
 package com.soniq.music
 
-import io.flutter.embedding.engine.FlutterEngine
-// 1. Import the AudioService framework instead of the default Flutter one
+// 🎯 FIXED: Import the specific Activity from the audio_service package
 import com.ryanheise.audioservice.AudioServiceActivity
+import io.flutter.embedding.engine.FlutterEngine
+import com.soniq.app.FastTextClassifier
+import com.soniq.app.FastTextClassifierApi
 
-// 2. Extend AudioServiceActivity instead of FlutterActivity
+// 🎯 FIXED: Extend AudioServiceActivity so background audio doesn't crash
 class MainActivity: AudioServiceActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         
-        AudioScannerApi.setUp(
-            flutterEngine.dartExecutor.binaryMessenger, 
-            AudioScannerApiImpl(context)
-        )
+        // Initialize the ML Kit Classifier
+        val fastTextClassifier = FastTextClassifier(context)
+        
+        // Register the Pigeon API listener
+        FastTextClassifierApi.setUp(flutterEngine.dartExecutor.binaryMessenger, fastTextClassifier)
     }
 }

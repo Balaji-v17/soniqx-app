@@ -5,8 +5,13 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:audio_service/audio_service.dart';
 import 'package:soniq/providers.dart';
 import 'package:soniq/database/database.dart';
+import 'package:soniq/ui/widgets/dynamic_playlist_art.dart'; 
+import 'package:soniq/providers/auto_mix_provider.dart'; // 🎯 NEW: Added AutoMix
+import 'package:soniq/ui/widgets/skeleton_loaders.dart'; // 🎯 NEW: Added Skeleton Pulse
+import 'package:soniq/audio/artwork_extractor.dart';
 import 'playlist_detail_screen.dart'; 
 
 class PlaylistsScreen extends ConsumerWidget {
@@ -19,12 +24,10 @@ class PlaylistsScreen extends ConsumerWidget {
     final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      // 🎯 REMOVED: Colors.transparent. Automatically uses the theme's background.
       body: CustomScrollView(
         slivers: [
           // 1. Premium App Bar
           SliverAppBar(
-            // 🎯 DYNAMIC: Matches background but keeps the opacity effect
             backgroundColor: theme.scaffoldBackgroundColor.withOpacity(0.9),
             pinned: true,
             expandedHeight: 120.0,
@@ -33,7 +36,7 @@ class PlaylistsScreen extends ConsumerWidget {
               title: Text(
                 'Playlists',
                 style: TextStyle(
-                  color: colorScheme.onBackground, // 🎯 DYNAMIC
+                  color: colorScheme.onBackground, 
                   fontWeight: FontWeight.w700,
                   letterSpacing: -0.5,
                 ),
@@ -41,14 +44,14 @@ class PlaylistsScreen extends ConsumerWidget {
             ),
             actions: [
               IconButton(
-                icon: Icon(Icons.add_rounded, color: colorScheme.onBackground), // 🎯 DYNAMIC
+                icon: Icon(Icons.add_rounded, color: colorScheme.onBackground), 
                 onPressed: () => _showCreatePlaylistDialog(context, db),
               ),
               const SizedBox(width: 8),
             ],
           ),
 
-          // 2. The "Made for you" Section
+          // 2. The Dynamic "Made for you" Section
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(24.0),
@@ -58,32 +61,64 @@ class PlaylistsScreen extends ConsumerWidget {
                   Text(
                     'Made for you',
                     style: TextStyle(
-                      color: colorScheme.onBackground, // 🎯 DYNAMIC
+                      color: colorScheme.onBackground, 
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 16),
                   
-                  // Horizontal Scroll for Premium Mixes
-                  SizedBox(
-                    height: 200,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      children: const [
-                        _GradientPlaylistCard(
-                          title: 'night mix',
-                          subtitle: 'CUSTOM MIX',
-                          colors: [Color(0xFF4F46E5), Color(0xFFDB2777)],
+                  // 🎯 FIXED: Replaced hardcoded mixes with live autoMixProvider stream
+                  Consumer(
+                    builder: (context, ref, child) {
+                      final mixesAsync = ref.watch(autoMixProvider);
+                      
+                      return mixesAsync.when(
+                        loading: () => SkeletonPulse(
+                          child: SizedBox(
+                            height: 200,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: 3,
+                              itemBuilder: (context, index) => Container(
+                                width: 200,
+                                margin: const EdgeInsets.only(right: 16),
+                                decoration: BoxDecoration(
+                                  color: colorScheme.onBackground.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
-                        SizedBox(width: 16),
-                        _GradientPlaylistCard(
-                          title: 'Focus Flow',
-                          subtitle: 'MODERN CLASSICAL',
-                          colors: [Color(0xFF991B1B), Color(0xFF450A0A)],
+                        error: (err, stack) => Text(
+                          'Error loading mixes', 
+                          style: TextStyle(color: colorScheme.onBackground.withOpacity(0.5))
                         ),
-                      ],
-                    ),
+                        data: (mixes) {
+                          if (mixes.isEmpty) {
+                            return Text(
+                              'Tag more songs to unlock AI mixes.', 
+                              style: TextStyle(color: colorScheme.onBackground.withOpacity(0.5))
+                            );
+                          }
+                          
+                          return SizedBox(
+                            height: 200,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: mixes.length,
+                              itemBuilder: (context, index) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 16.0),
+                                  child: _SmartMixCard(mix: mixes[index]),
+                                );
+                              },
+                            ),
+                          );
+                        }
+                      );
+                    }
                   ),
                 ],
               ),
@@ -105,7 +140,7 @@ class PlaylistsScreen extends ConsumerWidget {
               child: Text(
                 'My Collections',
                 style: TextStyle(
-                  color: colorScheme.onBackground.withOpacity(0.9), // 🎯 DYNAMIC
+                  color: colorScheme.onBackground.withOpacity(0.9), 
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
                 ),
@@ -126,7 +161,7 @@ class PlaylistsScreen extends ConsumerWidget {
                       padding: const EdgeInsets.symmetric(vertical: 40.0),
                       child: Text(
                         'No playlists created yet.', 
-                        style: TextStyle(color: colorScheme.onBackground.withOpacity(0.5)) // 🎯 DYNAMIC
+                        style: TextStyle(color: colorScheme.onBackground.withOpacity(0.5)) 
                       ),
                     ),
                   ),
@@ -139,42 +174,37 @@ class PlaylistsScreen extends ConsumerWidget {
                     final playlist = playlists[index];
                     return ListTile(
                       contentPadding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
-                      leading: Container(
-                        width: 56,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          // 🎯 DYNAMIC: Adapts nicely in both themes using primary color with low opacity
-                          color: colorScheme.primary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8.0),
-                        ),
-                        child: Icon(Icons.queue_music_rounded, color: colorScheme.primary),
+                      leading: DynamicPlaylistArt(
+                        title: playlist.name,
+                        size: 56.0,
+                        borderRadius: 8.0,
                       ),
                       title: Text(
                         playlist.name,
                         style: TextStyle(
-                          color: colorScheme.onBackground, // 🎯 DYNAMIC
+                          color: colorScheme.onBackground, 
                           fontWeight: FontWeight.w500, 
                           fontSize: 16
                         ),
                       ),
                       
                       trailing: IconButton(
-                        icon: Icon(Icons.delete_outline_rounded, color: colorScheme.onBackground.withOpacity(0.4)), // 🎯 DYNAMIC
+                        icon: Icon(Icons.delete_outline_rounded, color: colorScheme.onBackground.withOpacity(0.4)), 
                         onPressed: () async {
                           final confirm = await showDialog<bool>(
                             context: context,
                             builder: (context) => AlertDialog(
-                              backgroundColor: colorScheme.surface, // 🎯 DYNAMIC
+                              backgroundColor: colorScheme.surface, 
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                              title: Text('Delete Playlist?', style: TextStyle(color: colorScheme.onSurface)), // 🎯 DYNAMIC
+                              title: Text('Delete Playlist?', style: TextStyle(color: colorScheme.onSurface)), 
                               content: Text(
                                 'Are you sure you want to delete "${playlist.name}"? Your songs will remain safely in your library.', 
-                                style: TextStyle(color: colorScheme.onSurface.withOpacity(0.7)) // 🎯 DYNAMIC
+                                style: TextStyle(color: colorScheme.onSurface.withOpacity(0.7)) 
                               ),
                               actions: [
                                 TextButton(
                                   onPressed: () => Navigator.pop(context, false),
-                                  child: Text('CANCEL', style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6))), // 🎯 DYNAMIC
+                                  child: Text('CANCEL', style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6))), 
                                 ),
                                 TextButton(
                                   onPressed: () => Navigator.pop(context, true),
@@ -220,15 +250,15 @@ class PlaylistsScreen extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: colorScheme.surface, // 🎯 DYNAMIC
-        title: Text('New Playlist', style: TextStyle(color: colorScheme.onSurface)), // 🎯 DYNAMIC
+        backgroundColor: colorScheme.surface, 
+        title: Text('New Playlist', style: TextStyle(color: colorScheme.onSurface)), 
         content: TextField(
           controller: controller,
           autofocus: true,
-          style: TextStyle(color: colorScheme.onSurface), // 🎯 DYNAMIC
+          style: TextStyle(color: colorScheme.onSurface), 
           decoration: InputDecoration(
             hintText: 'Playlist Name', 
-            hintStyle: TextStyle(color: colorScheme.onSurface.withOpacity(0.3)), // 🎯 DYNAMIC
+            hintStyle: TextStyle(color: colorScheme.onSurface.withOpacity(0.3)), 
             enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: colorScheme.primary)),
             focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: colorScheme.primary, width: 2)),
           ),
@@ -236,7 +266,7 @@ class PlaylistsScreen extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context), 
-            child: Text('Cancel', style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6))), // 🎯 DYNAMIC
+            child: Text('Cancel', style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6))), 
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: colorScheme.primary),
@@ -256,56 +286,75 @@ class PlaylistsScreen extends ConsumerWidget {
 
 // ─── Sub-widgets ─────────────────────────────────────────────────────
 
-class _GradientPlaylistCard extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final List<Color> colors;
+class _SmartMixCard extends ConsumerWidget {
+  final SmartMix mix;
 
-  const _GradientPlaylistCard({
-    required this.title,
-    required this.subtitle,
-    required this.colors,
-  });
+  const _SmartMixCard({required this.mix});
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 200,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16.0),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: colors,
+  Widget build(BuildContext context, WidgetRef ref) {
+    final gradient = [Color(mix.gradientColors[0]), Color(mix.gradientColors[1])];
+
+    return GestureDetector(
+      onTap: () async {
+        final handler = ref.read(audioHandlerProvider);
+        
+        final items = await Future.wait(mix.tracks.map((s) async {
+          final artUri = await ArtworkExtractor.getArtUriFromPath(s.path);
+          return MediaItem(
+            id: s.id.toString(),
+            title: s.title ?? 'Unknown',
+            artist: s.artist ?? 'Unknown',
+            duration: Duration(milliseconds: s.durationMs ?? 0),
+            artUri: artUri,
+            extras: {'path': s.path},
+          );
+        }));
+
+        await handler.updateQueue(items);
+        await handler.setShuffleMode(AudioServiceShuffleMode.none);
+        await handler.skipToQueueItem(0);
+        await handler.play();
+      },
+      child: Container(
+        width: 200,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16.0),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: gradient,
+          ),
         ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            Text(
-              subtitle,
-              // 💡 Note: Text on solid gradients stays white regardless of theme mode.
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.8),
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.5,
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Text(
+                mix.subtitle,
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.8),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.5,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                letterSpacing: -0.5,
+              const SizedBox(height: 4),
+              Text(
+                mix.title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.5,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -325,9 +374,9 @@ class _RealLibraryStatsRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 20.0),
       decoration: BoxDecoration(
-        color: colorScheme.surface, // 🎯 DYNAMIC
+        color: colorScheme.surface, 
         borderRadius: BorderRadius.circular(16.0),
-        border: Border.all(color: colorScheme.onSurface.withOpacity(0.05)), // 🎯 DYNAMIC
+        border: Border.all(color: colorScheme.onSurface.withOpacity(0.05)), 
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -361,7 +410,7 @@ class _StatStream extends StatelessWidget {
             Text(
               '${snapshot.data ?? 0}', 
               style: TextStyle(
-                color: colorScheme.onSurface, // 🎯 DYNAMIC
+                color: colorScheme.onSurface, 
                 fontSize: 18, 
                 fontWeight: FontWeight.bold
               ),
@@ -370,7 +419,7 @@ class _StatStream extends StatelessWidget {
             Text(
               label, 
               style: TextStyle(
-                color: colorScheme.onSurface.withOpacity(0.4), // 🎯 DYNAMIC
+                color: colorScheme.onSurface.withOpacity(0.4), 
                 fontSize: 10, 
                 letterSpacing: 1.0, 
                 fontWeight: FontWeight.w600
@@ -391,7 +440,7 @@ class _Divider extends StatelessWidget {
     return Container(
       height: 30,
       width: 1,
-      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.1), // 🎯 DYNAMIC
+      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.1), 
     );
   }
 }
