@@ -4,6 +4,7 @@
 
 import 'dart:io';
 import 'package:soniq/ui/widgets/mini_waveform.dart';
+import 'package:soniq/utils/time_utils.dart';
 import 'package:soniq/ui/screens/browse_screens.dart'; 
 import 'package:soniq/ui/widgets/skeleton_loaders.dart';
 import 'package:just_audio/just_audio.dart'; 
@@ -25,6 +26,30 @@ import 'package:soniq/audio/artwork_extractor.dart';
 import 'package:soniq/ui/screens/playlist_detail_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:soniq/audio/shuffle_engine.dart';
+// 🎯 FIXED: Added the missing import for ScanPhase!
+import 'package:soniq/audio/music_scanner.dart';
+
+Future<List<MediaItem>> _buildMediaItems(List<Song> songs, {int activeIndex = 0}) async {
+  if (songs.isEmpty) return [];
+
+  final safeIndex = (activeIndex >= 0 && activeIndex < songs.length) ? activeIndex : 0;
+  final activeSong = songs[safeIndex];
+  
+  final activeArtUri = await ArtworkExtractor.getArtUriFromPath(activeSong.path);
+
+  return songs.map((s) {
+    final isActive = s.id == activeSong.id;
+    return MediaItem(
+      id: s.id.toString(),
+      title: s.title ?? 'Unknown Track',
+      artist: s.artist ?? 'Unknown Artist',
+      album: s.album ?? 'Unknown Album',
+      duration: Duration(milliseconds: s.durationMs ?? 0),
+      artUri: isActive ? activeArtUri : null,
+      extras: {'path': s.path},
+    );
+  }).toList();
+}
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -37,7 +62,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   String _userName = "User";
   bool _isLoadingName = true;
   
-  // Multi-Selection State
   bool _isSelectionMode = false;
   final Set<int> _selectedSongIds = {};
 
@@ -46,15 +70,63 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.initState();
     _loadUserName();
     
-    // 🎯 PRODUCTION AUTOMATION: Run background tasks silently on startup
     Future.microtask(() async {
       ref.read(languageServiceProvider).runWeeklyMaintenance();
+      _healSeededTracks();
       
-      // Automatically run classification pass on unclassified songs in the background
       try {
         await ref.read(languageServiceProvider).runClassificationPass();
       } catch (_) {}
     });
+  }
+
+  Future<void> _healSeededTracks() async {
+    final db = ref.read(databaseProvider);
+    final silentPlayer = AudioPlayer();
+
+    try {
+      final brokenSongs = await (db.select(db.songs)
+        ..where((s) => s.durationMs.isNull() | s.durationMs.equals(0))).get();
+
+      if (brokenSongs.isEmpty) return;
+
+      final companions = <SongsCompanion>[];
+
+      for (var i = 0; i < brokenSongs.length; i++) {
+        final song = brokenSongs[i];
+        if (song.path.isNotEmpty) {
+          try {
+            final duration = await silentPlayer.setFilePath(song.path);
+            if (duration != null && duration.inMilliseconds > 0) {
+              companions.add(
+                SongsCompanion(
+                  id: drift.Value(song.id),
+                  durationMs: drift.Value(duration.inMilliseconds),
+                ),
+              );
+            }
+          } catch (_) {}
+        }
+
+        if (i % 5 == 0) {
+          await Future.delayed(const Duration(milliseconds: 16));
+        }
+      }
+
+      if (companions.isNotEmpty) {
+        await db.batch((b) {
+          for (final companion in companions) {
+            b.update(
+              db.songs,
+              companion,
+              where: (t) => t.id.equals(companion.id.value),
+            );
+          }
+        });
+      }
+    } finally {
+      await silentPlayer.dispose();
+    }
   }
 
   Future<void> _loadUserName() async {
@@ -265,15 +337,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ],
             )
           : null,
-      // 🎯 PRODUCTION CLEANUP: Floating Action Button (sync/scan) is completely removed!
       body: SafeArea(
-        child: SingleChildScrollView(
+        child: CustomScrollView(
           key: const PageStorageKey('home_main_scroll_key'),
-          padding: const EdgeInsets.only(bottom: 120), 
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
                 padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -306,8 +375,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ],
                 ),
               ),
+            ),
 
-              Padding(
+            SliverToBoxAdapter(
+              child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
                   children: [
@@ -318,8 +389,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             icon: Icons.favorite_border_rounded, 
                             label: 'Liked',
                             onTap: () async {
-                              final db = ref.read(databaseProvider);
-                              final playlist = await (db.select(db.playlists)..where((p) => p.id.equals(1))).getSingleOrNull();
+                              final playlist = await (database.select(database.playlists)..where((p) => p.id.equals(1))).getSingleOrNull();
                               if (playlist != null && context.mounted) {
                                 Navigator.of(context).push(MaterialPageRoute(
                                   builder: (context) => PlaylistDetailScreen(playlist: playlist),
@@ -348,8 +418,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             icon: Icons.local_fire_department_outlined, 
                             label: 'Most Played',
                             onTap: () async {
-                              final db = ref.read(databaseProvider);
-                              final playlist = await (db.select(db.playlists)..where((p) => p.id.equals(3))).getSingleOrNull();
+                              final playlist = await (database.select(database.playlists)..where((p) => p.id.equals(3))).getSingleOrNull();
                               if (playlist != null && context.mounted) {
                                 Navigator.of(context).push(MaterialPageRoute(
                                   builder: (context) => PlaylistDetailScreen(playlist: playlist),
@@ -364,36 +433,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             icon: Icons.shuffle_rounded, 
                             label: 'Shuffle All',
                             onTap: () async {
-                              final db = ref.read(databaseProvider);
                               final handler = ref.read(audioHandlerProvider);
-                              
-                              final songs = await db.songsDao.watchAllAvailable().first;
+                              final songs = await database.songsDao.watchAllAvailable().first;
                               if (songs.isEmpty) return;
 
-                              final recentHistory = await db.historyDao.watchRecentlyPlayed(limit: 50).first;
+                              final recentHistory = await database.historyDao.watchRecentlyPlayed(limit: 50).first;
                               final recentIds = recentHistory.map((s) => s.id).toSet();
 
                               final shuffleEngine = SoniqShuffleEngine();
-                              final shuffleResult = shuffleEngine.generateQueue(
-                                songs,
-                                recentlyPlayedIds: recentIds, 
-                              );
+                              final shuffleResult = shuffleEngine.generateQueue(songs, recentlyPlayedIds: recentIds);
                               
                               if (shuffleResult.queue.isNotEmpty) {
-                                await _recordPlayHistory(context, db, shuffleResult.queue.first);
+                                await _recordPlayHistory(context, database, shuffleResult.queue.first);
                               }
 
-                              final items = await Future.wait(shuffleResult.queue.map((s) async {
-                                final artUri = await ArtworkExtractor.getArtUriFromPath(s.path);
-                                return MediaItem(
-                                  id: s.id.toString(),
-                                  title: s.title ?? 'Unknown Track',
-                                  artist: s.artist ?? 'Unknown Artist',
-                                  duration: Duration(milliseconds: s.durationMs ?? 0),
-                                  artUri: artUri,
-                                  extras: {'path': s.path},
-                                );
-                              }));
+                              final items = await _buildMediaItems(shuffleResult.queue, activeIndex: 0);
 
                               await handler.updateQueue(items);
                               await handler.setShuffleMode(AudioServiceShuffleMode.all);
@@ -407,17 +461,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ],
                 ),
               ),
+            ),
 
-              const SizedBox(height: 32),
+            const SliverToBoxAdapter(child: SizedBox(height: 32)),
 
-              _buildSectionTitle(
+            SliverToBoxAdapter(
+              child: _buildSectionTitle(
                 'Jump back in', 
                 hasViewAll: true,
                 onViewAll: () => Navigator.of(context).push(MaterialPageRoute(
                   builder: (context) => const PlayHistoryScreen(),
                 )),
               ),
-              StreamBuilder<List<Song>>(
+            ),
+
+            SliverToBoxAdapter(
+              child: StreamBuilder<List<Song>>(
                 stream: database.historyDao.watchRecentlyPlayed(limit: 10),
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
@@ -472,11 +531,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   );
                 },
               ),
+            ),
 
-              const SizedBox(height: 32),
+            const SliverToBoxAdapter(child: SizedBox(height: 32)),
 
-              _buildSectionTitle('Made for you'),
-              Consumer(
+            SliverToBoxAdapter(child: _buildSectionTitle('Made for you')),
+
+            SliverToBoxAdapter(
+              child: Consumer(
                 builder: (context, ref, child) {
                   final mixesAsync = ref.watch(autoMixProvider);
                   
@@ -521,19 +583,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   );
                 },
               ),
+            ),
 
-              const SizedBox(height: 32),
+            const SliverToBoxAdapter(child: SizedBox(height: 32)),
 
-              StreamBuilder<List<Song>>(
-                stream: database.songsDao.watchAllAvailable(), 
+            SliverToBoxAdapter(
+              child: StreamBuilder<LibraryStats>(
+                stream: database.songsDao.watchLibraryStats(), 
                 builder: (context, snapshot) {
-                  final songs = snapshot.data ?? [];
-                  
-                  final trackCount = songs.length;
-                  final albumCount = songs.map((s) => s.album?.trim()).where((a) => a != null && a.isNotEmpty).toSet().length;
-                  final artistCount = songs.map((s) => s.artist?.trim()).where((a) => a != null && a.isNotEmpty).toSet().length;
-                  final totalDurationMs = songs.fold<int>(0, (sum, s) => sum + (s.durationMs ?? 0));
-                  final hours = (totalDurationMs / (1000 * 60 * 60)).round();
+                  final stats = snapshot.data ?? const LibraryStats();
+                  final hours = (stats.totalDurationMs / (1000 * 60 * 60)).round();
 
                   return Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -547,16 +606,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
-                          _StatItem(value: trackCount.toString(), label: 'TRACKS'),
+                          _StatItem(value: stats.trackCount.toString(), label: 'TRACKS'),
                           Container(width: 1, height: 40, color: colorScheme.onSurface.withOpacity(0.1)),
                           _StatItem(
-                            value: albumCount.toString(), 
+                            value: stats.albumCount.toString(), 
                             label: 'ALBUMS',
                             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AlbumsScreen())),
                           ),
                           Container(width: 1, height: 40, color: colorScheme.onSurface.withOpacity(0.1)),
                           _StatItem(
-                            value: artistCount.toString(), 
+                            value: stats.artistCount.toString(), 
                             label: 'ARTISTS',
                             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ArtistsScreen())),
                           ),
@@ -568,15 +627,75 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   );
                 },
               ),
+            ),
 
-              const SizedBox(height: 48),
+            const SliverToBoxAdapter(child: SizedBox(height: 48)),
 
-              _buildFilterChips(context, ref),
-              _buildDynamicSectionTitle(ref),
-              _buildFilteredLibrary(context, ref),
+            SliverToBoxAdapter(child: _buildFilterChips(context, ref)),
+            SliverToBoxAdapter(child: _buildDynamicSectionTitle(ref)),
 
-            ],
-          ),
+            Consumer(
+              builder: (context, ref, child) {
+                final scanState = ref.watch(scanProvider);
+                
+                if (!scanState.isComplete && !scanState.isError) {
+                  final progressValue = scanState.total > 0 
+                      ? scanState.processed / scanState.total 
+                      : null;
+
+                  return SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                      child: Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: colorScheme.surface,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: colorScheme.primary.withOpacity(0.3)),
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              scanState.phase == ScanPhase.indexing 
+                                ? "Indexing Library..." 
+                                : "Processing Files...",
+                              style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            const SizedBox(height: 16),
+                            LinearProgressIndicator(
+                              value: progressValue,
+                              backgroundColor: colorScheme.onSurface.withOpacity(0.1),
+                              valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
+                              borderRadius: BorderRadius.circular(8),
+                              minHeight: 8,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              "${scanState.processed} / ${scanState.total} Tracks",
+                              style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.w600),
+                            ),
+                            if (scanState.currentTitle != null) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                scanState.currentTitle!,
+                                style: TextStyle(color: colorScheme.onSurface.withOpacity(0.5), fontSize: 12),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ]
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }
+                
+                return _buildFilteredLibrarySliver(context, ref);
+              }
+            ),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 120)),
+          ],
         ),
       ),
     );
@@ -662,56 +781,55 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Widget _buildFilteredLibrary(BuildContext context, WidgetRef ref) {
+  Widget _buildFilteredLibrarySliver(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
     final filteredSongsAsync = ref.watch(filteredSongsProvider);
 
     return filteredSongsAsync.when(
-      loading: () => SkeletonPulse(
-        child: ListView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: 8, 
-          itemExtent: 72.0,
-          itemBuilder: (context, index) => const SkeletonSongTile(),
+      loading: () => SliverFixedExtentList(
+        itemExtent: 72.0,
+        delegate: SliverChildBuilderDelegate(
+          (context, index) => const SkeletonSongTile(),
+          childCount: 8,
         ),
       ),
-      error: (err, stack) => Padding(
-        padding: const EdgeInsets.all(32),
-        child: Text('Error loading tracks.', style: TextStyle(color: colorScheme.onBackground.withOpacity(0.54))),
+      error: (err, stack) => SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Text('Error loading tracks.', style: TextStyle(color: colorScheme.onBackground.withOpacity(0.54))),
+        ),
       ),
       data: (filteredSongs) {
-        if (filteredSongs.isEmpty) return _buildEmptyState("No tracks found for this filter.");
+        if (filteredSongs.isEmpty) {
+          return SliverToBoxAdapter(child: _buildEmptyState("No tracks found for this filter."));
+        }
 
-        return ListView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: filteredSongs.length,
-          itemExtent: 72.0,   
-          cacheExtent: 500.0, 
-          itemBuilder: (context, index) {
-            final song = filteredSongs[index];
-            return _RecentVerticalTile(
-              key: ValueKey(song.id), 
-              song: song, 
-              ref: ref,
-              currentQueue: filteredSongs,
-              currentIndex: index,
-              isSelectionMode: _isSelectionMode,
-              isSelected: _selectedSongIds.contains(song.id),
-              onTapOverride: _isSelectionMode ? () => _toggleSelection(song.id) : null,
-              onLongPress: () {
-                if (!_isSelectionMode) {
-                  setState(() {
-                    _isSelectionMode = true;
-                    _selectedSongIds.add(song.id);
-                  });
-                }
-              },
-            );
-          },
+        return SliverFixedExtentList(
+          itemExtent: 72.0,
+          delegate: SliverChildBuilderDelegate(
+            (context, index) {
+              final song = filteredSongs[index];
+              return _RecentVerticalTile(
+                key: ValueKey(song.id), 
+                song: song, 
+                ref: ref,
+                currentQueue: filteredSongs,
+                currentIndex: index,
+                isSelectionMode: _isSelectionMode,
+                isSelected: _selectedSongIds.contains(song.id),
+                onTapOverride: _isSelectionMode ? () => _toggleSelection(song.id) : null,
+                onLongPress: () {
+                  if (!_isSelectionMode) {
+                    setState(() {
+                      _isSelectionMode = true;
+                      _selectedSongIds.add(song.id);
+                    });
+                  }
+                },
+              );
+            },
+            childCount: filteredSongs.length,
+          ),
         );
       },
     );
@@ -720,7 +838,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
 // ─── Sub-widgets ─────────────────
 
-class _AlbumArtWidget extends StatelessWidget {
+class _AlbumArtWidget extends StatefulWidget {
   final Song song;
   final double size;
   final double borderRadius;
@@ -737,48 +855,74 @@ class _AlbumArtWidget extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    if (_uriCache.containsKey(song.path)) {
-      return RepaintBoundary(child: _buildImage(_uriCache[song.path]!));
+  State<_AlbumArtWidget> createState() => _AlbumArtWidgetState();
+}
+
+class _AlbumArtWidgetState extends State<_AlbumArtWidget> {
+  Uri? _artUri;
+  bool _loaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_AlbumArtWidget._uriCache.containsKey(widget.song.path)) {
+      _artUri = _AlbumArtWidget._uriCache[widget.song.path];
+      _loaded = true;
+    } else if (_AlbumArtWidget._noArtCache.contains(widget.song.path)) {
+      _loaded = true;
+    } else {
+      Future.delayed(const Duration(milliseconds: 80), _loadArtwork);
     }
-    
-    if (_noArtCache.contains(song.path)) {
-      return RepaintBoundary(
-        child: FallbackAlbumArt(width: size, height: size, borderRadius: borderRadius),
+  }
+
+  Future<void> _loadArtwork() async {
+    if (!mounted) return;
+    try {
+      final uri = await ArtworkExtractor.getArtUriFromPath(widget.song.path);
+      if (mounted) {
+        setState(() {
+          if (uri != null) {
+            _artUri = uri;
+            _AlbumArtWidget._uriCache[widget.song.path] = uri;
+          } else {
+            _AlbumArtWidget._noArtCache.add(widget.song.path);
+          }
+          _loaded = true;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loaded = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_loaded) {
+      return Container(
+        width: widget.size,
+        height: widget.size,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(widget.borderRadius),
+        ),
       );
     }
 
-    return RepaintBoundary( 
-      child: FutureBuilder<Uri?>(
-        future: ArtworkExtractor.getArtUriFromPath(song.path),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.done) {
-            if (snapshot.data != null) {
-              _uriCache[song.path] = snapshot.data!; 
-              return _buildImage(snapshot.data!);
-            } else {
-              _noArtCache.add(song.path); 
-              return FallbackAlbumArt(width: size, height: size, borderRadius: borderRadius);
-            }
-          }
-          return FallbackAlbumArt(width: size, height: size, borderRadius: borderRadius); 
-        },
-      ),
-    );
-  }
+    if (_artUri != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(widget.borderRadius),
+        child: Image.file(
+          File(_artUri!.toFilePath()),
+          width: widget.size,
+          height: widget.size,
+          fit: BoxFit.cover,
+          cacheWidth: (widget.size * 2).toInt(),
+          errorBuilder: (context, error, stackTrace) => FallbackAlbumArt(width: widget.size, height: widget.size, borderRadius: widget.borderRadius),
+        ),
+      );
+    }
 
-  Widget _buildImage(Uri uri) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(borderRadius),
-      child: Image.file(
-        File(uri.toFilePath()),
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        cacheWidth: (size * 2).toInt(), 
-        errorBuilder: (context, error, stackTrace) => FallbackAlbumArt(width: size, height: size, borderRadius: borderRadius),
-      ),
-    );
+    return FallbackAlbumArt(width: widget.size, height: widget.size, borderRadius: widget.borderRadius);
   }
 }
 
@@ -837,19 +981,9 @@ class _JumpBackInCard extends StatelessWidget {
         await _recordPlayHistory(context, db, song);
 
         final recentSongs = await db.historyDao.watchRecentlyPlayed(limit: 50).first;
-        final queueItems = await Future.wait(recentSongs.map((s) async {
-          final artUri = await ArtworkExtractor.getArtUriFromPath(s.path);
-          return MediaItem(
-            id: s.id.toString(), 
-            title: s.title ?? 'Unknown', 
-            artist: s.artist ?? 'Unknown',
-            duration: Duration(milliseconds: s.durationMs ?? 0), 
-            artUri: artUri, 
-            extras: {'path': s.path},
-          );
-        }));
-
         final startIndex = recentSongs.indexWhere((s) => s.id == song.id);
+        
+        final queueItems = await _buildMediaItems(recentSongs, activeIndex: startIndex);
         
         await handler.updateQueue(queueItems);
         await handler.setShuffleMode(AudioServiceShuffleMode.none);
@@ -892,17 +1026,7 @@ class _SmartMixCard extends ConsumerWidget {
           await _recordPlayHistory(context, db, mix.tracks.first);
         }
 
-        final items = await Future.wait(mix.tracks.map((s) async {
-          final artUri = await ArtworkExtractor.getArtUriFromPath(s.path);
-          return MediaItem(
-            id: s.id.toString(),
-            title: s.title ?? 'Unknown',
-            artist: s.artist ?? 'Unknown',
-            duration: Duration(milliseconds: s.durationMs ?? 0),
-            artUri: artUri,
-            extras: {'path': s.path},
-          );
-        }));
+        final items = await _buildMediaItems(mix.tracks, activeIndex: 0);
 
         await handler.updateQueue(items);
         await handler.setShuffleMode(AudioServiceShuffleMode.none);
@@ -957,9 +1081,6 @@ class _RecentVerticalTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final duration = Duration(milliseconds: song.durationMs ?? 0);
-    final minutes = duration.inMinutes;
-    final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
     final db = ref.read(databaseProvider);
     final colorScheme = Theme.of(context).colorScheme;
     
@@ -979,20 +1100,7 @@ class _RecentVerticalTile extends StatelessWidget {
           leading: Stack(
             alignment: Alignment.center,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: song.path.isNotEmpty 
-                  ? FutureBuilder<Uri?>(
-                      future: ArtworkExtractor.getArtUriFromPath(song.path),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.done && snapshot.hasData) {
-                           return Image.file(File(snapshot.data!.toFilePath()), width: 48, height: 48, fit: BoxFit.cover);
-                        }
-                        return const FallbackAlbumArt(width: 48, height: 48, borderRadius: 8.0);
-                      }
-                    )
-                  : const FallbackAlbumArt(width: 48, height: 48, borderRadius: 8.0),
-              ),
+              _AlbumArtWidget(song: song, size: 48, borderRadius: 6, iconSize: 24),
               if (isCurrentlyPlaying)
                 Container(
                   width: 48,
@@ -1033,17 +1141,7 @@ class _RecentVerticalTile extends StatelessWidget {
             
             await _recordPlayHistory(context, db, song);
 
-            final queueItems = await Future.wait(currentQueue.map((s) async {
-              final artUri = await ArtworkExtractor.getArtUriFromPath(s.path);
-              return MediaItem(
-                id: s.id.toString(),
-                title: s.title ?? 'Unknown Track',
-                artist: s.artist ?? 'Unknown Artist',
-                duration: Duration(milliseconds: s.durationMs ?? 0),
-                artUri: artUri,
-                extras: {'path': s.path},
-              );
-            }));
+            final queueItems = await _buildMediaItems(currentQueue, activeIndex: currentIndex);
 
             await handler.updateQueue(queueItems);
             await handler.setShuffleMode(AudioServiceShuffleMode.none);
@@ -1083,7 +1181,11 @@ class _RecentVerticalTile extends StatelessWidget {
                 },
               ),
               const SizedBox(width: 8),
-              Text('$minutes:$seconds', style: TextStyle(color: colorScheme.onBackground.withOpacity(0.38), fontSize: 13)),
+              
+              Text(
+                formatSongDuration(song.durationMs), 
+                style: TextStyle(color: colorScheme.onBackground.withOpacity(0.38), fontSize: 13)
+              ),
               
               PopupMenuButton<String>(
                 icon: Icon(Icons.more_vert, color: colorScheme.onBackground.withOpacity(0.38), size: 20),
@@ -1122,17 +1224,7 @@ class RecentlyAddedScreen extends ConsumerWidget {
       await _recordPlayHistory(context, db, playList.first);
     }
 
-    final items = await Future.wait(playList.map((s) async {
-      final artUri = await ArtworkExtractor.getArtUriFromPath(s.path);
-      return MediaItem(
-        id: s.id.toString(),
-        title: s.title ?? 'Unknown Track',
-        artist: s.artist ?? 'Unknown Artist',
-        duration: Duration(milliseconds: s.durationMs ?? 0),
-        artUri: artUri,
-        extras: {'path': s.path},
-      );
-    }));
+    final items = await _buildMediaItems(playList, activeIndex: 0);
 
     await handler.updateQueue(items);
     await handler.setShuffleMode(shuffle ? AudioServiceShuffleMode.all : AudioServiceShuffleMode.none);
@@ -1217,7 +1309,6 @@ class RecentlyAddedScreen extends ConsumerWidget {
                   padding: const EdgeInsets.only(bottom: 120, top: 8),
                   itemCount: recentSongs.length,
                   itemExtent: 72.0,   
-                  cacheExtent: 500.0, 
                   itemBuilder: (context, index) => _RecentVerticalTile(
                     key: ValueKey(recentSongs[index].id),
                     song: recentSongs[index], 
@@ -1252,17 +1343,7 @@ class PlayHistoryScreen extends ConsumerWidget {
       await _recordPlayHistory(context, db, playList.first);
     }
 
-    final items = await Future.wait(playList.map((s) async {
-      final artUri = await ArtworkExtractor.getArtUriFromPath(s.path);
-      return MediaItem(
-        id: s.id.toString(),
-        title: s.title ?? 'Unknown Track',
-        artist: s.artist ?? 'Unknown Artist',
-        duration: Duration(milliseconds: s.durationMs ?? 0),
-        artUri: artUri,
-        extras: {'path': s.path},
-      );
-    }));
+    final items = await _buildMediaItems(playList, activeIndex: 0);
 
     await handler.updateQueue(items);
     await handler.setShuffleMode(shuffle ? AudioServiceShuffleMode.all : AudioServiceShuffleMode.none);
@@ -1348,7 +1429,6 @@ class PlayHistoryScreen extends ConsumerWidget {
                   padding: const EdgeInsets.only(bottom: 120, top: 8),
                   itemCount: historySongs.length,
                   itemExtent: 72.0,   
-                  cacheExtent: 500.0, 
                   itemBuilder: (context, index) => _RecentVerticalTile(
                     key: ValueKey('history_${historySongs[index].id}_$index'),
                     song: historySongs[index], 

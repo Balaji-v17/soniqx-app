@@ -1,4 +1,5 @@
 import 'widgets/add_to_playlist_sheet.dart';
+import 'package:soniq/utils/time_utils.dart';
 import 'package:flutter/material.dart';
 import '../database/database.dart'; // Adjust if your Drift DB path is different
 import 'package:soniq/ui/widgets/manual_tag_sheet.dart';
@@ -31,11 +32,6 @@ class SongTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Format duration from milliseconds to mm:ss
-    final duration = Duration(milliseconds: song.durationMs ?? 0);
-    final minutes = duration.inMinutes;
-    final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
-
     // Check if the AI has assigned a language tag
     final hasLanguageTag = song.languageTag != null && song.languageTag!.isNotEmpty;
 
@@ -120,9 +116,9 @@ class SongTile extends StatelessWidget {
               ),
             ),
             
-            // Duration
+            // 🎯 FIXED: Duration now uses the bulletproof formatter from time_utils.dart
             Text(
-              '$minutes:$seconds',
+              formatSongDuration(song.durationMs),
               style: const TextStyle(
                 color: Colors.white54,
                 fontSize: 14,
@@ -130,7 +126,7 @@ class SongTile extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             
-            // 🎯 FIXED: Converted to a PopupMenuButton to support multiple actions
+            // PopupMenuButton for actions
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert, color: Colors.white54),
               color: const Color(0xFF2A2A2A), // Dark theme matching background

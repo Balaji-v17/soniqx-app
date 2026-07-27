@@ -5,9 +5,9 @@
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:soniq/database/database.dart';
-// 🎯 FIXED: Corrected the import to match the file we just built
 import 'package:soniq/audio/audio_handler.dart'; 
 import 'package:soniq/providers/library_filter_provider.dart';
+import 'package:soniq/audio/music_scanner.dart';
 
 /// Provides global access to the Drift AppDatabase.
 final databaseProvider = Provider<AppDatabase>((ref) {
@@ -65,4 +65,32 @@ final filteredSongsProvider = Provider<AsyncValue<List<Song>>>((ref) {
       return manualMatch || autoMatch;
     }).toList();
   });
+});
+
+// ─── Scan Progress State ───────────────────────────────────────
+
+class ScanStateNotifier extends StateNotifier<ScanProgress> {
+  final MusicScanner _scanner;
+  
+  ScanStateNotifier(this._scanner) : super(const ScanProgress(phase: ScanPhase.complete));
+
+  Future<void> startScan({bool computeHashes = false}) async {
+    // Prevent starting multiple simultaneous scans
+    if (state.phase != ScanPhase.complete && state.phase != ScanPhase.error) return;
+    
+    // Listen to the scanner's progress stream and publish to UI
+    final subscription = _scanner.progress.listen((progress) {
+      if (mounted) state = progress;
+    });
+    
+    await _scanner.scanAndSync(computeHashes: computeHashes);
+    await subscription.cancel();
+  }
+}
+
+/// Exposes active scanning state and progress updates across the UI.
+final scanProvider = StateNotifierProvider<ScanStateNotifier, ScanProgress>((ref) {
+  final db = ref.watch(databaseProvider);
+  final scanner = MusicScanner(db);
+  return ScanStateNotifier(scanner);
 });

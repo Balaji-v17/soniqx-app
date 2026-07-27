@@ -10,7 +10,7 @@ import android.provider.MediaStore
 import android.util.Log
 import android.util.Size
 import java.io.ByteArrayOutputStream
-import java.io.File
+import android.media.MediaMetadataRetriever
 
 class AudioScannerApiImpl(private val context: Context) : AudioScannerApi {
 
@@ -63,11 +63,27 @@ class AudioScannerApiImpl(private val context: Context) : AudioScannerApi {
         while (cursor.moveToNext()) {
             try {
                 val path = cursor.getString(dataCol) ?: continue
+                val songId = cursor.getLong(idCol)
+                var duration = cursor.getLong(durationCol)
                 
-                // 🎯 THE ONLY SHIELD WE NEED: Make sure the file physically exists!
-            
-                
-                val duration = cursor.getLong(durationCol)
+                // 🎯 THE SCOPED STORAGE FIX: Use the Content URI, not the file path!
+                if (duration <= 0L) {
+                    try {
+                        val retriever = MediaMetadataRetriever()
+                        val contentUri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, songId)
+                        retriever.setDataSource(context, contentUri)
+                        val extractedTime = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                        duration = extractedTime?.toLongOrNull() ?: 0L
+                        retriever.release()
+                    } catch (e: Exception) {
+                        Log.e(tag, "Retriever failed for URI: ${e.message}")
+                    }
+                }
+
+                if (duration in 1L..9999L) {
+                    duration *= 1000L
+                }
+
                 if (duration < minDurationMs) continue
 
                 val track = cursor.getLong(trackCol).let { if (it == 0L) null else it }
@@ -84,7 +100,7 @@ class AudioScannerApiImpl(private val context: Context) : AudioScannerApi {
                     cleanString(cursor.getString(genreCol)) else null
 
                 songs.add(RawSongData(
-                    id = cursor.getLong(idCol),
+                    id = songId,
                     title = cleanString(cursor.getString(titleCol)),
                     artist = cleanString(cursor.getString(artistCol)),
                     album = cleanString(cursor.getString(albumCol)),
@@ -107,18 +123,14 @@ class AudioScannerApiImpl(private val context: Context) : AudioScannerApi {
 
     override fun querySongs(): List<RawSongData> {
         val projection = getBaseProjection()
-        
-        // 🎯 BACK TO BASICS: Just get all valid music files.
-        val selection = "${MediaStore.Audio.Media.IS_MUSIC} = 1 AND ${MediaStore.Audio.Media.DURATION} >= ?"
-        val selectionArgs = arrayOf(minDurationMs.toString())
-
+        val selection = "${MediaStore.Audio.Media.IS_MUSIC} = 1"
         val songs = mutableListOf<RawSongData>()
 
         contentResolver.query(
             MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
             projection,
             selection,
-            selectionArgs,
+            null,
             "${MediaStore.Audio.Media.TITLE} ASC"
         )?.use { cursor ->
             songs.addAll(extractSongsFromCursor(cursor))
@@ -128,10 +140,8 @@ class AudioScannerApiImpl(private val context: Context) : AudioScannerApi {
 
     override fun querySongsSince(timestamp: Long): List<RawSongData> {
         val projection = getBaseProjection()
-        
-        val selection = "${MediaStore.Audio.Media.IS_MUSIC} = 1 AND ${MediaStore.Audio.Media.DURATION} >= ? AND ${MediaStore.Audio.Media.DATE_ADDED} >= ?"
-        val selectionArgs = arrayOf(minDurationMs.toString(), timestamp.toString())
-
+        val selection = "${MediaStore.Audio.Media.IS_MUSIC} = 1 AND ${MediaStore.Audio.Media.DATE_ADDED} >= ?"
+        val selectionArgs = arrayOf(timestamp.toString())
         val songs = mutableListOf<RawSongData>()
 
         contentResolver.query(

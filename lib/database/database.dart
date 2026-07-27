@@ -1,31 +1,6 @@
 // ============================================================
 //  SONIQ — lib/database/database.dart
 //  Drift 2.34+ | SQLite FTS5 | WAL Mode | July 2026
-//
-//  After any edit to this file run:
-//  dart run build_runner build --delete-conflicting-outputs
-//
-//  pubspec.yaml dependencies required:
-//    drift: ^2.34.0
-//    drift_flutter: ^0.3.1
-//    sqlite3_flutter_libs: ^0.5.0
-//    path_provider: ^2.1.5
-//    path: ^1.9.0
-//
-//  dev_dependencies required:
-//    drift_dev: ^2.34.0
-//    build_runner: ^2.15.0
-//
-//  build.yaml required (FTS5 module):
-//    targets:
-//      $default:
-//        builders:
-//          drift_dev:
-//            options:
-//              sql:
-//                dialect: sqlite
-//                options:
-//                  modules: [fts5]
 // ============================================================
 
 import 'dart:io';
@@ -40,7 +15,6 @@ part 'database.g.dart';
 //  SECTION 1 — TABLE DEFINITIONS
 // ============================================================
 
-// ─── 1.1  Songs ─────────────────────────────────────────────
 class Songs extends Table {
   IntColumn get id            => integer()();
   TextColumn get title        => text().nullable()();
@@ -58,130 +32,88 @@ class Songs extends Table {
   TextColumn get fileHash     => text().nullable()();
   BoolColumn get isAvailable  => boolean().withDefault(const Constant(true))();
   TextColumn get languageTag  => text().nullable()();
-  RealColumn get classifierConfidence =>
-      real().withDefault(const Constant(0.0))();
-  BoolColumn get wasManuallyTagged =>
-      boolean().withDefault(const Constant(false))();
+  RealColumn get classifierConfidence => real().withDefault(const Constant(0.0))();
+  BoolColumn get wasManuallyTagged => boolean().withDefault(const Constant(false))();
   IntColumn  get dateScanned  => integer().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
 }
 
-// ─── 1.2  Playlists ─────────────────────────────────────────
 class Playlists extends Table {
   IntColumn      get id         => integer().autoIncrement()();
   TextColumn     get name       => text().withLength(min: 1, max: 255)();
-  DateTimeColumn get createdAt  =>
-      dateTime().withDefault(currentDateAndTime)();
-  DateTimeColumn get updatedAt  =>
-      dateTime().withDefault(currentDateAndTime)();
-  BoolColumn     get isSystem   =>
-      boolean().withDefault(const Constant(false))();
+  DateTimeColumn get createdAt  => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt  => dateTime().withDefault(currentDateAndTime)();
+  BoolColumn     get isSystem   => boolean().withDefault(const Constant(false))();
   TextColumn     get systemType => text().nullable()();
 }
 
-// ─── 1.3  PlaylistEntries ────────────────────────────────────
 class PlaylistEntries extends Table {
   IntColumn      get id         => integer().autoIncrement()();
-  IntColumn      get playlistId => integer().references(
-      Playlists, #id, onDelete: KeyAction.cascade)();
-  IntColumn      get songId     => integer().references(
-      Songs, #id, onDelete: KeyAction.cascade)();
+  IntColumn      get playlistId => integer().references(Playlists, #id, onDelete: KeyAction.cascade)();
+  IntColumn      get songId     => integer().references(Songs, #id, onDelete: KeyAction.cascade)();
   IntColumn      get position   => integer()();
-  DateTimeColumn get addedAt    =>
-      dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get addedAt    => dateTime().withDefault(currentDateAndTime)();
 }
 
-// ─── 1.4  PlayHistory ────────────────────────────────────────
-// ONE ROW PER PLAY EVENT — not one row per song.
 class PlayHistory extends Table {
   IntColumn      get id            => integer().autoIncrement()();
-  IntColumn      get songId        => integer().references(
-      Songs, #id, onDelete: KeyAction.cascade)();
-  DateTimeColumn get playedAt      =>
-      dateTime().withDefault(currentDateAndTime)();
-  IntColumn      get listenedMs    =>
-      integer().withDefault(const Constant(0))();
-  BoolColumn     get counted       =>
-      boolean().withDefault(const Constant(false))();
-  BoolColumn     get skippedEarly  =>
-      boolean().withDefault(const Constant(false))();
+  IntColumn      get songId        => integer().references(Songs, #id, onDelete: KeyAction.cascade)();
+  DateTimeColumn get playedAt      => dateTime().withDefault(currentDateAndTime)();
+  IntColumn      get listenedMs    => integer().withDefault(const Constant(0))();
+  BoolColumn     get counted       => boolean().withDefault(const Constant(false))();
+  BoolColumn     get skippedEarly  => boolean().withDefault(const Constant(false))();
 }
 
-// ─── 1.5  SongStats ─────────────────────────────────────────
-// Aggregated stats per song — drives Top 50 screen.
 class SongStats extends Table {
-  IntColumn      get songId          => integer().references(
-      Songs, #id, onDelete: KeyAction.cascade)();
-  IntColumn      get playCount       =>
-      integer().withDefault(const Constant(0))();
-  IntColumn      get totalListenedMs =>
-      integer().withDefault(const Constant(0))();
+  IntColumn      get songId          => integer().references(Songs, #id, onDelete: KeyAction.cascade)();
+  IntColumn      get playCount       => integer().withDefault(const Constant(0))();
+  IntColumn      get totalListenedMs => integer().withDefault(const Constant(0))();
   DateTimeColumn get lastPlayed      => dateTime().nullable()();
-  IntColumn      get skipCount       =>
-      integer().withDefault(const Constant(0))();
+  IntColumn      get skipCount       => integer().withDefault(const Constant(0))();
 
   @override
   Set<Column> get primaryKey => {songId};
 }
 
-// ─── 1.6  LanguageTags ──────────────────────────────────────
-// Artist → language seed database for Phase 6 classifier.
 class LanguageTags extends Table {
   TextColumn     get artistKey          => text()();
   TextColumn     get primaryLanguage    => text()();
   TextColumn     get languageScoresJson => text()();
   TextColumn     get source             => text()();
-  RealColumn     get confidence         =>
-      real().withDefault(const Constant(0.70))();
-  DateTimeColumn get updatedAt          =>
-      dateTime().withDefault(currentDateAndTime)();
+  RealColumn     get confidence         => real().withDefault(const Constant(0.70))();
+  DateTimeColumn get updatedAt          => dateTime().withDefault(currentDateAndTime)();
 
   @override
   Set<Column> get primaryKey => {artistKey};
 }
 
-// ─── 1.7  UserCorrections ───────────────────────────────────
-// Classifier feedback loop — 3+ corrections promote to LanguageTags.
 class UserCorrections extends Table {
   IntColumn      get id                => integer().autoIncrement()();
   TextColumn     get rawArtistName     => text()();
   TextColumn     get artistKey         => text()();
   TextColumn     get predictedLanguage => text()();
   TextColumn     get correctedLanguage => text()();
-  DateTimeColumn get correctedAt       =>
-      dateTime().withDefault(currentDateAndTime)();
-  IntColumn      get signalThatFired   =>
-      integer().withDefault(const Constant(0))();
-  RealColumn     get confidenceAtTime  =>
-      real().withDefault(const Constant(0.0))();
-  BoolColumn     get appliedToSeeds    =>
-      boolean().withDefault(const Constant(false))();
+  DateTimeColumn get correctedAt       => dateTime().withDefault(currentDateAndTime)();
+  IntColumn      get signalThatFired   => integer().withDefault(const Constant(0))();
+  RealColumn     get confidenceAtTime  => real().withDefault(const Constant(0.0))();
+  BoolColumn     get appliedToSeeds    => boolean().withDefault(const Constant(false))();
 }
 
-// ─── 1.8  QueueState ────────────────────────────────────────
-// Persists playback queue so it survives app kills.
 class QueueState extends Table {
   IntColumn      get id           => integer()();
-  TextColumn     get songIdsJson  =>
-      text().withDefault(const Constant('[]'))();
-  IntColumn      get currentIndex =>
-      integer().withDefault(const Constant(0))();
-  IntColumn      get positionMs   =>
-      integer().withDefault(const Constant(0))();
-  TextColumn     get repeatMode   =>
-      text().withDefault(const Constant('none'))();
-  BoolColumn     get shuffleMode  =>
-      boolean().withDefault(const Constant(false))();
+  TextColumn     get songIdsJson  => text().withDefault(const Constant('[]'))();
+  IntColumn      get currentIndex => integer().withDefault(const Constant(0))();
+  IntColumn      get positionMs   => integer().withDefault(const Constant(0))();
+  TextColumn     get repeatMode   => text().withDefault(const Constant('none'))();
+  BoolColumn     get shuffleMode  => boolean().withDefault(const Constant(false))();
   DateTimeColumn get savedAt      => dateTime().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
 }
 
-// ─── 1.9  AppSettings ───────────────────────────────────────
-// Generic key-value store for settings that survive backup/restore.
 class AppSettings extends Table {
   TextColumn get key   => text()();
   TextColumn get value => text().nullable()();
@@ -194,10 +126,22 @@ class AppSettings extends Table {
 //  SECTION 2 — DATA ACCESS OBJECTS
 // ============================================================
 
-// ─── 2.1  SongsDao ──────────────────────────────────────────
+class LibraryStats {
+  final int trackCount;
+  final int albumCount;
+  final int artistCount;
+  final int totalDurationMs;
+
+  const LibraryStats({
+    this.trackCount = 0,
+    this.albumCount = 0,
+    this.artistCount = 0,
+    this.totalDurationMs = 0,
+  });
+}
+
 @DriftAccessor(tables: [Songs, SongStats])
-class SongsDao extends DatabaseAccessor<AppDatabase>
-    with _$SongsDaoMixin {
+class SongsDao extends DatabaseAccessor<AppDatabase> with _$SongsDaoMixin {
   SongsDao(super.db);
 
   Stream<List<Song>> watchAllAvailable() =>
@@ -225,21 +169,38 @@ class SongsDao extends DatabaseAccessor<AppDatabase>
       .watch()
       .map((list) => list.length);
 
+  Stream<LibraryStats> watchLibraryStats() {
+    final trackCount = songs.id.count();
+    final albumCount = songs.album.count(distinct: true);
+    final artistCount = songs.artist.count(distinct: true);
+    final totalDuration = songs.durationMs.sum();
+
+    final query = selectOnly(songs)
+      ..addColumns([trackCount, albumCount, artistCount, totalDuration])
+      ..where(songs.isAvailable.equals(true));
+
+    return query.watchSingle().map((row) {
+      return LibraryStats(
+        trackCount: row.read(trackCount) ?? 0,
+        albumCount: row.read(albumCount) ?? 0,
+        artistCount: row.read(artistCount) ?? 0,
+        totalDurationMs: row.read(totalDuration) ?? 0,
+      );
+    });
+  }
+
   Future<Song?> getSongById(int id) =>
-      (select(songs)..where((s) => s.id.equals(id)))
-          .getSingleOrNull();
+      (select(songs)..where((s) => s.id.equals(id))).getSingleOrNull();
 
   Future<List<Song>> getSongsByArtist(String artist) =>
       (select(songs)
-        ..where((s) =>
-            s.artist.equals(artist) & s.isAvailable.equals(true))
+        ..where((s) => s.artist.equals(artist) & s.isAvailable.equals(true))
         ..orderBy([(s) => OrderingTerm.asc(s.trackNumber)]))
           .get();
 
   Future<List<Song>> getSongsByAlbum(int albumId) =>
       (select(songs)
-        ..where((s) =>
-            s.albumId.equals(albumId) & s.isAvailable.equals(true))
+        ..where((s) => s.albumId.equals(albumId) & s.isAvailable.equals(true))
         ..orderBy([
           (s) => OrderingTerm.asc(s.discNumber),
           (s) => OrderingTerm.asc(s.trackNumber),
@@ -248,9 +209,7 @@ class SongsDao extends DatabaseAccessor<AppDatabase>
 
   Future<List<Song>> getSongsByLanguage(String language) =>
       (select(songs)
-        ..where((s) =>
-            s.languageTag.equals(language) &
-            s.isAvailable.equals(true)))
+        ..where((s) => s.languageTag.equals(language) & s.isAvailable.equals(true)))
           .get();
 
   Future<List<Song>> getUnclassifiedSongs() =>
@@ -300,27 +259,18 @@ class SongsDao extends DatabaseAccessor<AppDatabase>
   Future<List<String>> getAllArtists() async {
     final query = selectOnly(songs, distinct: true)
       ..addColumns([songs.artist])
-      ..where(
-          songs.isAvailable.equals(true) & songs.artist.isNotNull())
+      ..where(songs.isAvailable.equals(true) & songs.artist.isNotNull())
       ..orderBy([OrderingTerm.asc(songs.artist)]);
     final rows = await query.get();
-    return rows
-        .map((r) => r.read(songs.artist))
-        .whereType<String>()
-        .toList();
+    return rows.map((r) => r.read(songs.artist)).whereType<String>().toList();
   }
 
   Future<List<String>> getClassifiedLanguages() async {
     final query = selectOnly(songs, distinct: true)
       ..addColumns([songs.languageTag])
-      ..where(
-          songs.languageTag.isNotNull() &
-          songs.isAvailable.equals(true));
+      ..where(songs.languageTag.isNotNull() & songs.isAvailable.equals(true));
     final rows = await query.get();
-    return rows
-        .map((r) => r.read(songs.languageTag))
-        .whereType<String>()
-        .toList();
+    return rows.map((r) => r.read(songs.languageTag)).whereType<String>().toList();
   }
 
   Future<int> getTotalSongCount() async {
@@ -338,8 +288,7 @@ class SongsDao extends DatabaseAccessor<AppDatabase>
         const SongsCompanion(isAvailable: Value(false)),
       );
 
-  Future<void> autoClassify(
-      int songId, String language, double confidence) async {
+  Future<void> autoClassify(int songId, String language, double confidence) async {
     final song = await getSongById(songId);
     if (song == null || song.wasManuallyTagged) return;
     await (update(songs)..where((s) => s.id.equals(songId))).write(
@@ -359,12 +308,20 @@ class SongsDao extends DatabaseAccessor<AppDatabase>
           wasManuallyTagged: const Value(true),
         ),
       );
+
+  Future<void> healMissingDuration(int songId, int trueDurationMs) async {
+    if (trueDurationMs <= 0) return;
+    final song = await getSongById(songId);
+    if (song != null && (song.durationMs == null || song.durationMs == 0)) {
+      await (update(songs)..where((s) => s.id.equals(songId))).write(
+        SongsCompanion(durationMs: Value(trueDurationMs)),
+      );
+    }
+  }
 }
 
-// ─── 2.2  PlaylistsDao ──────────────────────────────────────
 @DriftAccessor(tables: [Playlists, PlaylistEntries, Songs])
-class PlaylistsDao extends DatabaseAccessor<AppDatabase>
-    with _$PlaylistsDaoMixin {
+class PlaylistsDao extends DatabaseAccessor<AppDatabase> with _$PlaylistsDaoMixin {
   PlaylistsDao(super.db);
 
   static const int favoritesId      = 1;
@@ -383,15 +340,12 @@ class PlaylistsDao extends DatabaseAccessor<AppDatabase>
     ])
       ..where(playlistEntries.playlistId.equals(playlistId))
       ..orderBy([OrderingTerm.asc(playlistEntries.position)]);
-    return query.watch().map(
-        (rows) => rows.map((r) => r.readTable(songs)).toList());
+    return query.watch().map((rows) => rows.map((r) => r.readTable(songs)).toList());
   }
 
   Stream<bool> watchIsFavorite(int songId) {
     final query = select(playlistEntries)
-      ..where((e) =>
-          e.playlistId.equals(favoritesId) &
-          e.songId.equals(songId));
+      ..where((e) => e.playlistId.equals(favoritesId) & e.songId.equals(songId));
     return query.watch().map((rows) => rows.isNotEmpty);
   }
 
@@ -409,34 +363,23 @@ class PlaylistsDao extends DatabaseAccessor<AppDatabase>
     final query = select(playlistEntries).join([
       innerJoin(songs, songs.id.equalsExp(playlistEntries.songId)),
     ])
-      ..where(
-          playlistEntries.playlistId.equals(playlistId) &
-          songs.isAvailable.equals(false));
+      ..where(playlistEntries.playlistId.equals(playlistId) & songs.isAvailable.equals(false));
     final rows = await query.get();
-    return rows
-        .map((r) => r.readTable(playlistEntries).id)
-        .toList();
+    return rows.map((r) => r.readTable(playlistEntries).id).toList();
   }
 
-  // 🎯 FIX: Wrapped everything in explicit Value()
   Future<int> createPlaylist(String name) =>
       into(playlists).insert(PlaylistsCompanion(name: Value(name)));
 
   Future<void> renamePlaylist(int id, String newName) =>
-      (update(playlists)
-        ..where((p) =>
-            p.id.equals(id) & p.isSystem.equals(false)))
+      (update(playlists)..where((p) => p.id.equals(id) & p.isSystem.equals(false)))
           .write(PlaylistsCompanion(name: Value(newName)));
 
   Future<int> deletePlaylist(int id) =>
-      (delete(playlists)
-        ..where((p) =>
-            p.id.equals(id) & p.isSystem.equals(false)))
-          .go();
+      (delete(playlists)..where((p) => p.id.equals(id) & p.isSystem.equals(false))).go();
 
   Future<void> addSongToPlaylist(int playlistId, int songId) async {
     final maxPos = await _getMaxPosition(playlistId);
-    // 🎯 FIX: Wrapped everything in explicit Value()
     await into(playlistEntries).insert(
       PlaylistEntriesCompanion(
         playlistId: Value(playlistId),
@@ -448,31 +391,22 @@ class PlaylistsDao extends DatabaseAccessor<AppDatabase>
   }
 
   Future<void> removeSongFromPlaylist(int entryId) async {
-      await (delete(playlistEntries)
-        ..where((e) => e.id.equals(entryId)))
-          .go();
+      await (delete(playlistEntries)..where((e) => e.id.equals(entryId))).go();
   }
 
-  Future<void> reorderSong(
-      int playlistId, int entryId, int newPosition) =>
+  Future<void> reorderSong(int playlistId, int entryId, int newPosition) =>
       transaction(() async {
-        await (update(playlistEntries)
-              ..where((e) => e.id.equals(entryId)))
-            .write(PlaylistEntriesCompanion(
-                position: Value(newPosition)));
+        await (update(playlistEntries)..where((e) => e.id.equals(entryId)))
+            .write(PlaylistEntriesCompanion(position: Value(newPosition)));
         await _touchPlaylist(playlistId);
       });
 
   Future<void> toggleFavorite(int songId) async {
     final existing = await (select(playlistEntries)
-          ..where((e) =>
-              e.playlistId.equals(favoritesId) &
-              e.songId.equals(songId)))
+          ..where((e) => e.playlistId.equals(favoritesId) & e.songId.equals(songId)))
         .getSingleOrNull();
     if (existing != null) {
-      await (delete(playlistEntries)
-            ..where((e) => e.id.equals(existing.id)))
-          .go();
+      await (delete(playlistEntries)..where((e) => e.id.equals(existing.id))).go();
     } else {
       await addSongToPlaylist(favoritesId, songId);
     }
@@ -493,11 +427,8 @@ class PlaylistsDao extends DatabaseAccessor<AppDatabase>
       );
 }
 
-// ─── 2.3  HistoryDao ────────────────────────────────────────
-@DriftAccessor(
-    tables: [PlayHistory, SongStats, Songs, Playlists, PlaylistEntries])
-class HistoryDao extends DatabaseAccessor<AppDatabase>
-    with _$HistoryDaoMixin {
+@DriftAccessor(tables: [PlayHistory, SongStats, Songs, Playlists, PlaylistEntries])
+class HistoryDao extends DatabaseAccessor<AppDatabase> with _$HistoryDaoMixin {
   HistoryDao(super.db);
 
   Future<int> _getSystemPlaylistId(String systemType, String defaultName) async {
@@ -523,7 +454,6 @@ class HistoryDao extends DatabaseAccessor<AppDatabase>
     final top50Id = await _getSystemPlaylistId('top50', 'Top 50');
 
     await transaction(() async {
-      // 1. Insert row into PlayHistory
       await into(playHistory).insert(
         PlayHistoryCompanion(
           songId: Value(songId),
@@ -534,7 +464,6 @@ class HistoryDao extends DatabaseAccessor<AppDatabase>
         ),
       );
 
-      // 2. Update or Insert SongStats
       if (counted) {
         final existingStat = await (select(songStats)..where((s) => s.songId.equals(songId))).getSingleOrNull();
         if (existingStat == null) {
@@ -555,12 +484,13 @@ class HistoryDao extends DatabaseAccessor<AppDatabase>
             ),
           );
         }
-        await _refreshTop50(top50Id);
       }
-
-      // 3. Update Recently Played Playlist
-      await _updateRecentlyPlayed(recentlyPlayedId, songId);
     });
+
+    if (counted) {
+      _refreshTop50(top50Id).ignore();
+    }
+    _updateRecentlyPlayed(recentlyPlayedId, songId).ignore();
   }
 
   Stream<List<Song>> watchTop50() {
@@ -570,8 +500,7 @@ class HistoryDao extends DatabaseAccessor<AppDatabase>
       ..where(songs.isAvailable.equals(true))
       ..orderBy([OrderingTerm.desc(songStats.playCount)])
       ..limit(50);
-    return query.watch().map(
-        (rows) => rows.map((r) => r.readTable(songs)).toList());
+    return query.watch().map((rows) => rows.map((r) => r.readTable(songs)).toList());
   }
 
   Stream<List<Song>> watchRecentlyPlayed({int limit = 30}) {
@@ -579,18 +508,14 @@ class HistoryDao extends DatabaseAccessor<AppDatabase>
       innerJoin(songs, songs.id.equalsExp(playlistEntries.songId)),
       innerJoin(playlists, playlists.id.equalsExp(playlistEntries.playlistId)),
     ])
-      ..where(
-          playlists.systemType.equals('recently_played') &
-          songs.isAvailable.equals(true))
+      ..where(playlists.systemType.equals('recently_played') & songs.isAvailable.equals(true))
       ..orderBy([OrderingTerm.asc(playlistEntries.position)])
       ..limit(limit);
-    return query.watch().map(
-        (rows) => rows.map((r) => r.readTable(songs)).toList());
+    return query.watch().map((rows) => rows.map((r) => r.readTable(songs)).toList());
   }
 
   Future<SongStat?> getStatsForSong(int songId) =>
-      (select(songStats)..where((s) => s.songId.equals(songId)))
-          .getSingleOrNull();
+      (select(songStats)..where((s) => s.songId.equals(songId))).getSingleOrNull();
 
   Future<Duration> getTotalListeningTime() async {
     final sum = songStats.totalListenedMs.sum();
@@ -625,9 +550,7 @@ class HistoryDao extends DatabaseAccessor<AppDatabase>
 
   Future<void> _updateRecentlyPlayed(int recentlyPlayedId, int songId) async {
     await (delete(playlistEntries)
-          ..where((e) =>
-              e.playlistId.equals(recentlyPlayedId) &
-              e.songId.equals(songId)))
+          ..where((e) => e.playlistId.equals(recentlyPlayedId) & e.songId.equals(songId)))
         .go();
     
     final entries = await (select(playlistEntries)
@@ -661,8 +584,6 @@ class HistoryDao extends DatabaseAccessor<AppDatabase>
   }
 }
 
-// ─── 2.4 LanguageDao ────────────────────────────────────────
-
 class _VoteEntry {
   final String language;
   final int votes;
@@ -679,9 +600,7 @@ class LanguageDao extends DatabaseAccessor<AppDatabase> with _$LanguageDaoMixin 
   }
 
   Future<LanguageTag?> lookupArtist(String artistKey) async {
-    return await (select(languageTags)
-          ..where((t) => t.artistKey.equals(artistKey)))
-        .getSingleOrNull();
+    return await (select(languageTags)..where((t) => t.artistKey.equals(artistKey))).getSingleOrNull();
   }
 
   Future<void> applyPendingCorrections() async {
@@ -695,7 +614,8 @@ class LanguageDao extends DatabaseAccessor<AppDatabase> with _$LanguageDaoMixin 
       FROM user_corrections
       WHERE applied_to_seeds = 0
       GROUP BY artist_key, corrected_language
-      ''',
+      '''
+      ,
       readsFrom: {userCorrections},
     ).get();
 
@@ -720,14 +640,12 @@ class LanguageDao extends DatabaseAccessor<AppDatabase> with _$LanguageDaoMixin 
         final top = votes.first;
         final ratio = top.votes / top.totalVotes;
 
-        // Must have 3+ votes AND clear supermajority (> 60%)
         if (top.votes < 3 || ratio < 0.60) continue;
 
         await into(languageTags).insertOnConflictUpdate(
           LanguageTagsCompanion.insert(
             artistKey:          artistKey,
             primaryLanguage:    top.language,
-            // STRIPPED Value() wrapper for required columns
             languageScoresJson: '{"${top.language}": 0.85}', 
             source:             'user_correction',           
             confidence:         const Value(0.85),
@@ -754,33 +672,25 @@ class LanguageDao extends DatabaseAccessor<AppDatabase> with _$LanguageDaoMixin 
     });
 
     if (promotedArtistKeys.isNotEmpty) {
-      // Swapped to standard print() to avoid missing Foundation imports
       print('applyPendingCorrections: promoted ${promotedArtistKeys.length} artists: $promotedArtistKeys');
     }
   }
 }
 
-// ─── 2.5  SettingsDao ───────────────────────────────────────
 @DriftAccessor(tables: [AppSettings, QueueState])
-class SettingsDao extends DatabaseAccessor<AppDatabase>
-    with _$SettingsDaoMixin {
+class SettingsDao extends DatabaseAccessor<AppDatabase> with _$SettingsDaoMixin {
   SettingsDao(super.db);
 
   Future<String?> getSetting(String key) async {
-    final row = await (select(appSettings)
-          ..where((s) => s.key.equals(key)))
-        .getSingleOrNull();
+    final row = await (select(appSettings)..where((s) => s.key.equals(key))).getSingleOrNull();
     return row?.value;
   }
 
-  // 🎯 FIX: Wrapped everything in explicit Value()
   Future<void> setSetting(String key, String? value) =>
       into(appSettings).insertOnConflictUpdate(
-        AppSettingsCompanion(
-            key: Value(key), value: Value(value)),
+        AppSettingsCompanion(key: Value(key), value: Value(value)),
       );
 
-  // 🎯 FIX: Wrapped everything in explicit Value()
   Future<void> saveQueueState({
     required String songIdsJson,
     required int currentIndex,
@@ -801,8 +711,7 @@ class SettingsDao extends DatabaseAccessor<AppDatabase>
       );
 
   Future<QueueStateData?> loadQueueState() =>
-      (select(queueState)..where((q) => q.id.equals(1)))
-          .getSingleOrNull();
+      (select(queueState)..where((q) => q.id.equals(1))).getSingleOrNull();
 }
 
 // ============================================================
@@ -827,35 +736,33 @@ class AppDatabase extends _$AppDatabase {
   late final languageDao  = LanguageDao(this);
   late final settingsDao  = SettingsDao(this);
 
-Future<void> insertSongsBatch(List<Map<String, dynamic>> rawSongs) async {
+  Future<void> insertSongsBatch(List<Map<String, dynamic>> rawSongs) async {
     await batch((b) {
       final companions = rawSongs.map((raw) {
         final rawTitle = raw['title']?.toString();
         final safeTitle = (rawTitle != null && rawTitle.isNotEmpty) ? rawTitle : 'Unknown Track';
         
-        // 1. Give loose tracks a "Single" album name
         String? parsedAlbum = raw['album']?.toString();
         if (parsedAlbum == null || parsedAlbum.trim().isEmpty || parsedAlbum.toLowerCase() == '<unknown>') {
            parsedAlbum = '$safeTitle (Single)';
         }
 
-        // 2. Generate a unique numeric ID so the UI separates them!
         int finalAlbumId = int.tryParse(raw['album_id']?.toString() ?? '0') ?? 0;
         if (finalAlbumId == 0) {
            finalAlbumId = parsedAlbum.hashCode;
         }
 
-        // 🎯 FIX: Wrapped everything in explicit Value()
         return SongsCompanion(
           id: Value(int.tryParse(raw['id'].toString()) ?? 0),
           title: Value(safeTitle),
           artist: Value(raw['artist']?.toString() ?? 'Unknown Artist'),
           album: Value(parsedAlbum), 
           path: Value(raw['data_uri']?.toString() ?? ''), 
-          
           albumId: Value(finalAlbumId), 
-          
-          durationMs: Value(int.tryParse(raw['duration']?.toString() ?? '') ?? 0),
+          durationMs: Value(() {
+            final rawVal = int.tryParse(raw['duration']?.toString() ?? '') ?? 0;
+            return rawVal > 0 && rawVal < 10000 ? rawVal * 1000 : rawVal;
+          }()),
           dateAdded: Value(DateTime.now().millisecondsSinceEpoch),
         );
       }).toList();
@@ -863,6 +770,7 @@ Future<void> insertSongsBatch(List<Map<String, dynamic>> rawSongs) async {
       b.insertAllOnConflictUpdate(songs, companions);
     });
   }
+
   @override
   int get schemaVersion => 1;
 
@@ -973,6 +881,10 @@ LazyDatabase _openConnection() {
         rawDb.execute('PRAGMA cache_size=-20000;');
         rawDb.execute('PRAGMA temp_store=MEMORY;');
         rawDb.execute('PRAGMA mmap_size=268435456;');
+        
+        // 🎯 THE FIX: SQLite WAL Auto-Checkpointing
+        // This prevents the Write-Ahead Log from locking read queries during background scans.
+        rawDb.execute('PRAGMA wal_autocheckpoint=100;');
       },
     );
   });

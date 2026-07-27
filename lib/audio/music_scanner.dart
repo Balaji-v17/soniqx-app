@@ -10,7 +10,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:just_audio/just_audio.dart'; // 🎯 NEW: Required to extract true durations
+import 'package:just_audio/just_audio.dart'; // Deep scan extraction
 
 import 'package:soniq/src/pigeon/audio_scanner.g.dart';
 import '../database/database.dart';
@@ -89,27 +89,44 @@ class MusicScanner {
       final companions  = <SongsCompanion>[];
       int processed = 0;
 
+      // 🎯 RESTORING THE FLOATING BUTTON'S POWER: A dedicated deep-scanner
+      final deepScanner = AudioPlayer();
+
       for (final song in songs) {
         if (song.id == null || song.path == null) continue;
 
+        // If Android OS failed (duration is 0), we force the deep scan natively!
+        int currentDuration = song.durationMs ?? 0;
+        if (currentDuration <= 0) {
+          try {
+            final d = await deepScanner.setFilePath(song.path!);
+            if (d != null && d.inMilliseconds > 0) {
+              song.durationMs = d.inMilliseconds; // Safely assign true duration
+            }
+          } catch (_) {
+             // File is completely unreadable or broken
+          }
+        }
+
         processed++;
-        if (processed % 50 == 0) {
+        if (processed % 10 == 0) {
           _emit(ScanPhase.indexing,
               processed: processed,
               total: songs.length,
               title: song.title);
-          await Future.delayed(Duration.zero);
+          await Future.delayed(const Duration(milliseconds: 10)); // Keep UI smooth
         }
 
         scannedIds.add(song.id!); 
         companions.add(_mapToCompanion(song));
       }
 
-      _emit(ScanPhase.indexing, processed: songs.length, total: songs.length);
-      await _db.songsDao.upsertSongs(companions);
+      await deepScanner.dispose();
 
-      // 🎯 NEW: Intercept the scan and backfill missing durations!
-      await _backfillMissingDurations(songs);
+      _emit(ScanPhase.indexing, processed: songs.length, total: songs.length);
+      
+      // Save to database with perfect durations attached
+      await _db.songsDao.upsertSongs(companions);
 
       _emit(ScanPhase.markingRemovals);
       final removedIds = existingIds
@@ -144,32 +161,6 @@ class MusicScanner {
 
   void dispose() {
     _progressCtrl.close();
-  }
-
-  // ─── Duration Backfill ───────────────────────────────────────
-  
-  Future<void> _backfillMissingDurations(List<RawSongData> songs) async {
-    // Locate tracks where Android failed to extract the duration
-    final tracksToFix = songs.where((s) => (s.durationMs ?? 0) <= 0 && s.path != null && s.id != null).toList();
-    if (tracksToFix.isEmpty) return;
-
-    final player = AudioPlayer();
-    
-    for (final song in tracksToFix) {
-      try {
-        // Feed the path into JustAudio to extract the true duration
-        final duration = await player.setFilePath(song.path!);
-        if (duration != null && duration.inMilliseconds > 0) {
-          // Patch the local database
-          await (_db.update(_db.songs)..where((t) => t.id.equals(song.id!))).write(
-            SongsCompanion(durationMs: Value(duration.inMilliseconds)),
-          );
-        }
-      } catch (_) {
-        // Skip unreadable files
-      }
-    }
-    await player.dispose();
   }
 
   // ─── Permission Handling ─────────────────────────────────────
@@ -249,7 +240,6 @@ class MusicScanner {
       }
     }
 
-    // 🎯 THE FIX: Identify 10-digit second timestamps and convert them to milliseconds
     int rawDateAdded = song.dateAdded ?? 0;
     if (rawDateAdded > 0 && rawDateAdded < 9999999999) {
       rawDateAdded *= 1000; 
@@ -265,12 +255,13 @@ class MusicScanner {
       discNumber:  Value(song.discNumber == 0 ? null : song.discNumber),
       year:        Value(song.year == 0 ? null : song.year),
       genre:       Value(_cleanString(song.genre)),
-      durationMs:  Value(song.durationMs ?? 0),
+      
+      // We can trust this completely now. If Android failed, the deep scan handled it.
+      durationMs:  Value(song.durationMs ?? 0), 
+      
       path:        Value(pathForEngine),
       albumId:     Value(finalAlbumId), 
-      
-      dateAdded:   Value(rawDateAdded), // 👈 Safely converted milliseconds
-      
+      dateAdded:   Value(rawDateAdded), 
       fileHash:    const Value(null),
       isAvailable: const Value(true),
       languageTag:          const Value(null), 
