@@ -113,6 +113,27 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _pathMeta = const VerificationMeta('path');
+  @override
+  late final GeneratedColumn<String> path = GeneratedColumn<String>(
+    'path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _canonicalPathMeta = const VerificationMeta(
+    'canonicalPath',
+  );
+  @override
+  late final GeneratedColumn<String> canonicalPath = GeneratedColumn<String>(
+    'canonical_path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
   static const VerificationMeta _titleMeta = const VerificationMeta('title');
   @override
   late final GeneratedColumn<String> title = GeneratedColumn<String>(
@@ -149,17 +170,6 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
     aliasedName,
     true,
     type: DriftSqlType.string,
-    requiredDuringInsert: false,
-  );
-  static const VerificationMeta _durationMsMeta = const VerificationMeta(
-    'durationMs',
-  );
-  @override
-  late final GeneratedColumn<int> durationMs = GeneratedColumn<int>(
-    'duration_ms',
-    aliasedName,
-    true,
-    type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
   static const VerificationMeta _trackNumberMeta = const VerificationMeta(
@@ -202,15 +212,6 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
-  static const VerificationMeta _pathMeta = const VerificationMeta('path');
-  @override
-  late final GeneratedColumn<String> path = GeneratedColumn<String>(
-    'path',
-    aliasedName,
-    false,
-    type: DriftSqlType.string,
-    requiredDuringInsert: true,
-  );
   static const VerificationMeta _albumIdMeta = const VerificationMeta(
     'albumId',
   );
@@ -218,9 +219,31 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
   late final GeneratedColumn<int> albumId = GeneratedColumn<int>(
     'album_id',
     aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _durationMsMeta = const VerificationMeta(
+    'durationMs',
+  );
+  @override
+  late final GeneratedColumn<int> durationMs = GeneratedColumn<int>(
+    'duration_ms',
+    aliasedName,
     false,
     type: DriftSqlType.int,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _sizeMeta = const VerificationMeta('size');
+  @override
+  late final GeneratedColumn<int> size = GeneratedColumn<int>(
+    'size',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
   );
   static const VerificationMeta _dateAddedMeta = const VerificationMeta(
     'dateAdded',
@@ -229,20 +252,33 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
   late final GeneratedColumn<int> dateAdded = GeneratedColumn<int>(
     'date_added',
     aliasedName,
-    false,
+    true,
     type: DriftSqlType.int,
-    requiredDuringInsert: true,
+    requiredDuringInsert: false,
   );
-  static const VerificationMeta _fileHashMeta = const VerificationMeta(
-    'fileHash',
+  static const VerificationMeta _ctimeNanoMeta = const VerificationMeta(
+    'ctimeNano',
   );
   @override
-  late final GeneratedColumn<String> fileHash = GeneratedColumn<String>(
-    'file_hash',
+  late final GeneratedColumn<int> ctimeNano = GeneratedColumn<int>(
+    'ctime_nano',
     aliasedName,
-    true,
-    type: DriftSqlType.string,
+    false,
+    type: DriftSqlType.int,
     requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _firstSeenMeta = const VerificationMeta(
+    'firstSeen',
+  );
+  @override
+  late final GeneratedColumn<int> firstSeen = GeneratedColumn<int>(
+    'first_seen',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
   );
   static const VerificationMeta _isAvailableMeta = const VerificationMeta(
     'isAvailable',
@@ -297,6 +333,17 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _fileHashMeta = const VerificationMeta(
+    'fileHash',
+  );
+  @override
+  late final GeneratedColumn<String> fileHash = GeneratedColumn<String>(
+    'file_hash',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _dateScannedMeta = const VerificationMeta(
     'dateScanned',
   );
@@ -311,23 +358,27 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
   @override
   List<GeneratedColumn> get $columns => [
     id,
+    path,
+    canonicalPath,
     title,
     artist,
     album,
     albumArtist,
-    durationMs,
     trackNumber,
     discNumber,
     year,
     genre,
-    path,
     albumId,
+    durationMs,
+    size,
     dateAdded,
-    fileHash,
+    ctimeNano,
+    firstSeen,
     isAvailable,
     languageTag,
     classifierConfidence,
     wasManuallyTagged,
+    fileHash,
     dateScanned,
   ];
   @override
@@ -344,6 +395,23 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
     final data = instance.toColumns(true);
     if (data.containsKey('id')) {
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('path')) {
+      context.handle(
+        _pathMeta,
+        path.isAcceptableOrUnknown(data['path']!, _pathMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_pathMeta);
+    }
+    if (data.containsKey('canonical_path')) {
+      context.handle(
+        _canonicalPathMeta,
+        canonicalPath.isAcceptableOrUnknown(
+          data['canonical_path']!,
+          _canonicalPathMeta,
+        ),
+      );
     }
     if (data.containsKey('title')) {
       context.handle(
@@ -370,12 +438,6 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
           data['album_artist']!,
           _albumArtistMeta,
         ),
-      );
-    }
-    if (data.containsKey('duration_ms')) {
-      context.handle(
-        _durationMsMeta,
-        durationMs.isAcceptableOrUnknown(data['duration_ms']!, _durationMsMeta),
       );
     }
     if (data.containsKey('track_number')) {
@@ -405,34 +467,40 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
         genre.isAcceptableOrUnknown(data['genre']!, _genreMeta),
       );
     }
-    if (data.containsKey('path')) {
-      context.handle(
-        _pathMeta,
-        path.isAcceptableOrUnknown(data['path']!, _pathMeta),
-      );
-    } else if (isInserting) {
-      context.missing(_pathMeta);
-    }
     if (data.containsKey('album_id')) {
       context.handle(
         _albumIdMeta,
         albumId.isAcceptableOrUnknown(data['album_id']!, _albumIdMeta),
       );
-    } else if (isInserting) {
-      context.missing(_albumIdMeta);
+    }
+    if (data.containsKey('duration_ms')) {
+      context.handle(
+        _durationMsMeta,
+        durationMs.isAcceptableOrUnknown(data['duration_ms']!, _durationMsMeta),
+      );
+    }
+    if (data.containsKey('size')) {
+      context.handle(
+        _sizeMeta,
+        size.isAcceptableOrUnknown(data['size']!, _sizeMeta),
+      );
     }
     if (data.containsKey('date_added')) {
       context.handle(
         _dateAddedMeta,
         dateAdded.isAcceptableOrUnknown(data['date_added']!, _dateAddedMeta),
       );
-    } else if (isInserting) {
-      context.missing(_dateAddedMeta);
     }
-    if (data.containsKey('file_hash')) {
+    if (data.containsKey('ctime_nano')) {
       context.handle(
-        _fileHashMeta,
-        fileHash.isAcceptableOrUnknown(data['file_hash']!, _fileHashMeta),
+        _ctimeNanoMeta,
+        ctimeNano.isAcceptableOrUnknown(data['ctime_nano']!, _ctimeNanoMeta),
+      );
+    }
+    if (data.containsKey('first_seen')) {
+      context.handle(
+        _firstSeenMeta,
+        firstSeen.isAcceptableOrUnknown(data['first_seen']!, _firstSeenMeta),
       );
     }
     if (data.containsKey('is_available')) {
@@ -471,6 +539,12 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
         ),
       );
     }
+    if (data.containsKey('file_hash')) {
+      context.handle(
+        _fileHashMeta,
+        fileHash.isAcceptableOrUnknown(data['file_hash']!, _fileHashMeta),
+      );
+    }
     if (data.containsKey('date_scanned')) {
       context.handle(
         _dateScannedMeta,
@@ -493,6 +567,14 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
         DriftSqlType.int,
         data['${effectivePrefix}id'],
       )!,
+      path: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}path'],
+      )!,
+      canonicalPath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}canonical_path'],
+      )!,
       title: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}title'],
@@ -508,10 +590,6 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
       albumArtist: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}album_artist'],
-      ),
-      durationMs: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
-        data['${effectivePrefix}duration_ms'],
       ),
       trackNumber: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
@@ -529,22 +607,30 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
         DriftSqlType.string,
         data['${effectivePrefix}genre'],
       ),
-      path: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}path'],
-      )!,
       albumId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}album_id'],
+      ),
+      durationMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}duration_ms'],
+      )!,
+      size: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}size'],
       )!,
       dateAdded: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}date_added'],
-      )!,
-      fileHash: attachedDatabase.typeMapping.read(
-        DriftSqlType.string,
-        data['${effectivePrefix}file_hash'],
       ),
+      ctimeNano: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}ctime_nano'],
+      )!,
+      firstSeen: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}first_seen'],
+      )!,
       isAvailable: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_available'],
@@ -561,6 +647,10 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
         DriftSqlType.bool,
         data['${effectivePrefix}was_manually_tagged'],
       )!,
+      fileHash: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}file_hash'],
+      ),
       dateScanned: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}date_scanned'],
@@ -576,49 +666,59 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
 
 class Song extends DataClass implements Insertable<Song> {
   final int id;
+  final String path;
+  final String canonicalPath;
   final String? title;
   final String? artist;
   final String? album;
   final String? albumArtist;
-  final int? durationMs;
   final int? trackNumber;
   final int? discNumber;
   final int? year;
   final String? genre;
-  final String path;
-  final int albumId;
-  final int dateAdded;
-  final String? fileHash;
+  final int? albumId;
+  final int durationMs;
+  final int size;
+  final int? dateAdded;
+  final int ctimeNano;
+  final int firstSeen;
   final bool isAvailable;
   final String? languageTag;
   final double classifierConfidence;
   final bool wasManuallyTagged;
+  final String? fileHash;
   final int? dateScanned;
   const Song({
     required this.id,
+    required this.path,
+    required this.canonicalPath,
     this.title,
     this.artist,
     this.album,
     this.albumArtist,
-    this.durationMs,
     this.trackNumber,
     this.discNumber,
     this.year,
     this.genre,
-    required this.path,
-    required this.albumId,
-    required this.dateAdded,
-    this.fileHash,
+    this.albumId,
+    required this.durationMs,
+    required this.size,
+    this.dateAdded,
+    required this.ctimeNano,
+    required this.firstSeen,
     required this.isAvailable,
     this.languageTag,
     required this.classifierConfidence,
     required this.wasManuallyTagged,
+    this.fileHash,
     this.dateScanned,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
+    map['path'] = Variable<String>(path);
+    map['canonical_path'] = Variable<String>(canonicalPath);
     if (!nullToAbsent || title != null) {
       map['title'] = Variable<String>(title);
     }
@@ -630,9 +730,6 @@ class Song extends DataClass implements Insertable<Song> {
     }
     if (!nullToAbsent || albumArtist != null) {
       map['album_artist'] = Variable<String>(albumArtist);
-    }
-    if (!nullToAbsent || durationMs != null) {
-      map['duration_ms'] = Variable<int>(durationMs);
     }
     if (!nullToAbsent || trackNumber != null) {
       map['track_number'] = Variable<int>(trackNumber);
@@ -646,18 +743,25 @@ class Song extends DataClass implements Insertable<Song> {
     if (!nullToAbsent || genre != null) {
       map['genre'] = Variable<String>(genre);
     }
-    map['path'] = Variable<String>(path);
-    map['album_id'] = Variable<int>(albumId);
-    map['date_added'] = Variable<int>(dateAdded);
-    if (!nullToAbsent || fileHash != null) {
-      map['file_hash'] = Variable<String>(fileHash);
+    if (!nullToAbsent || albumId != null) {
+      map['album_id'] = Variable<int>(albumId);
     }
+    map['duration_ms'] = Variable<int>(durationMs);
+    map['size'] = Variable<int>(size);
+    if (!nullToAbsent || dateAdded != null) {
+      map['date_added'] = Variable<int>(dateAdded);
+    }
+    map['ctime_nano'] = Variable<int>(ctimeNano);
+    map['first_seen'] = Variable<int>(firstSeen);
     map['is_available'] = Variable<bool>(isAvailable);
     if (!nullToAbsent || languageTag != null) {
       map['language_tag'] = Variable<String>(languageTag);
     }
     map['classifier_confidence'] = Variable<double>(classifierConfidence);
     map['was_manually_tagged'] = Variable<bool>(wasManuallyTagged);
+    if (!nullToAbsent || fileHash != null) {
+      map['file_hash'] = Variable<String>(fileHash);
+    }
     if (!nullToAbsent || dateScanned != null) {
       map['date_scanned'] = Variable<int>(dateScanned);
     }
@@ -667,6 +771,8 @@ class Song extends DataClass implements Insertable<Song> {
   SongsCompanion toCompanion(bool nullToAbsent) {
     return SongsCompanion(
       id: Value(id),
+      path: Value(path),
+      canonicalPath: Value(canonicalPath),
       title: title == null && nullToAbsent
           ? const Value.absent()
           : Value(title),
@@ -679,9 +785,6 @@ class Song extends DataClass implements Insertable<Song> {
       albumArtist: albumArtist == null && nullToAbsent
           ? const Value.absent()
           : Value(albumArtist),
-      durationMs: durationMs == null && nullToAbsent
-          ? const Value.absent()
-          : Value(durationMs),
       trackNumber: trackNumber == null && nullToAbsent
           ? const Value.absent()
           : Value(trackNumber),
@@ -692,18 +795,25 @@ class Song extends DataClass implements Insertable<Song> {
       genre: genre == null && nullToAbsent
           ? const Value.absent()
           : Value(genre),
-      path: Value(path),
-      albumId: Value(albumId),
-      dateAdded: Value(dateAdded),
-      fileHash: fileHash == null && nullToAbsent
+      albumId: albumId == null && nullToAbsent
           ? const Value.absent()
-          : Value(fileHash),
+          : Value(albumId),
+      durationMs: Value(durationMs),
+      size: Value(size),
+      dateAdded: dateAdded == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dateAdded),
+      ctimeNano: Value(ctimeNano),
+      firstSeen: Value(firstSeen),
       isAvailable: Value(isAvailable),
       languageTag: languageTag == null && nullToAbsent
           ? const Value.absent()
           : Value(languageTag),
       classifierConfidence: Value(classifierConfidence),
       wasManuallyTagged: Value(wasManuallyTagged),
+      fileHash: fileHash == null && nullToAbsent
+          ? const Value.absent()
+          : Value(fileHash),
       dateScanned: dateScanned == null && nullToAbsent
           ? const Value.absent()
           : Value(dateScanned),
@@ -717,25 +827,29 @@ class Song extends DataClass implements Insertable<Song> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return Song(
       id: serializer.fromJson<int>(json['id']),
+      path: serializer.fromJson<String>(json['path']),
+      canonicalPath: serializer.fromJson<String>(json['canonicalPath']),
       title: serializer.fromJson<String?>(json['title']),
       artist: serializer.fromJson<String?>(json['artist']),
       album: serializer.fromJson<String?>(json['album']),
       albumArtist: serializer.fromJson<String?>(json['albumArtist']),
-      durationMs: serializer.fromJson<int?>(json['durationMs']),
       trackNumber: serializer.fromJson<int?>(json['trackNumber']),
       discNumber: serializer.fromJson<int?>(json['discNumber']),
       year: serializer.fromJson<int?>(json['year']),
       genre: serializer.fromJson<String?>(json['genre']),
-      path: serializer.fromJson<String>(json['path']),
-      albumId: serializer.fromJson<int>(json['albumId']),
-      dateAdded: serializer.fromJson<int>(json['dateAdded']),
-      fileHash: serializer.fromJson<String?>(json['fileHash']),
+      albumId: serializer.fromJson<int?>(json['albumId']),
+      durationMs: serializer.fromJson<int>(json['durationMs']),
+      size: serializer.fromJson<int>(json['size']),
+      dateAdded: serializer.fromJson<int?>(json['dateAdded']),
+      ctimeNano: serializer.fromJson<int>(json['ctimeNano']),
+      firstSeen: serializer.fromJson<int>(json['firstSeen']),
       isAvailable: serializer.fromJson<bool>(json['isAvailable']),
       languageTag: serializer.fromJson<String?>(json['languageTag']),
       classifierConfidence: serializer.fromJson<double>(
         json['classifierConfidence'],
       ),
       wasManuallyTagged: serializer.fromJson<bool>(json['wasManuallyTagged']),
+      fileHash: serializer.fromJson<String?>(json['fileHash']),
       dateScanned: serializer.fromJson<int?>(json['dateScanned']),
     );
   }
@@ -744,80 +858,93 @@ class Song extends DataClass implements Insertable<Song> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
+      'path': serializer.toJson<String>(path),
+      'canonicalPath': serializer.toJson<String>(canonicalPath),
       'title': serializer.toJson<String?>(title),
       'artist': serializer.toJson<String?>(artist),
       'album': serializer.toJson<String?>(album),
       'albumArtist': serializer.toJson<String?>(albumArtist),
-      'durationMs': serializer.toJson<int?>(durationMs),
       'trackNumber': serializer.toJson<int?>(trackNumber),
       'discNumber': serializer.toJson<int?>(discNumber),
       'year': serializer.toJson<int?>(year),
       'genre': serializer.toJson<String?>(genre),
-      'path': serializer.toJson<String>(path),
-      'albumId': serializer.toJson<int>(albumId),
-      'dateAdded': serializer.toJson<int>(dateAdded),
-      'fileHash': serializer.toJson<String?>(fileHash),
+      'albumId': serializer.toJson<int?>(albumId),
+      'durationMs': serializer.toJson<int>(durationMs),
+      'size': serializer.toJson<int>(size),
+      'dateAdded': serializer.toJson<int?>(dateAdded),
+      'ctimeNano': serializer.toJson<int>(ctimeNano),
+      'firstSeen': serializer.toJson<int>(firstSeen),
       'isAvailable': serializer.toJson<bool>(isAvailable),
       'languageTag': serializer.toJson<String?>(languageTag),
       'classifierConfidence': serializer.toJson<double>(classifierConfidence),
       'wasManuallyTagged': serializer.toJson<bool>(wasManuallyTagged),
+      'fileHash': serializer.toJson<String?>(fileHash),
       'dateScanned': serializer.toJson<int?>(dateScanned),
     };
   }
 
   Song copyWith({
     int? id,
+    String? path,
+    String? canonicalPath,
     Value<String?> title = const Value.absent(),
     Value<String?> artist = const Value.absent(),
     Value<String?> album = const Value.absent(),
     Value<String?> albumArtist = const Value.absent(),
-    Value<int?> durationMs = const Value.absent(),
     Value<int?> trackNumber = const Value.absent(),
     Value<int?> discNumber = const Value.absent(),
     Value<int?> year = const Value.absent(),
     Value<String?> genre = const Value.absent(),
-    String? path,
-    int? albumId,
-    int? dateAdded,
-    Value<String?> fileHash = const Value.absent(),
+    Value<int?> albumId = const Value.absent(),
+    int? durationMs,
+    int? size,
+    Value<int?> dateAdded = const Value.absent(),
+    int? ctimeNano,
+    int? firstSeen,
     bool? isAvailable,
     Value<String?> languageTag = const Value.absent(),
     double? classifierConfidence,
     bool? wasManuallyTagged,
+    Value<String?> fileHash = const Value.absent(),
     Value<int?> dateScanned = const Value.absent(),
   }) => Song(
     id: id ?? this.id,
+    path: path ?? this.path,
+    canonicalPath: canonicalPath ?? this.canonicalPath,
     title: title.present ? title.value : this.title,
     artist: artist.present ? artist.value : this.artist,
     album: album.present ? album.value : this.album,
     albumArtist: albumArtist.present ? albumArtist.value : this.albumArtist,
-    durationMs: durationMs.present ? durationMs.value : this.durationMs,
     trackNumber: trackNumber.present ? trackNumber.value : this.trackNumber,
     discNumber: discNumber.present ? discNumber.value : this.discNumber,
     year: year.present ? year.value : this.year,
     genre: genre.present ? genre.value : this.genre,
-    path: path ?? this.path,
-    albumId: albumId ?? this.albumId,
-    dateAdded: dateAdded ?? this.dateAdded,
-    fileHash: fileHash.present ? fileHash.value : this.fileHash,
+    albumId: albumId.present ? albumId.value : this.albumId,
+    durationMs: durationMs ?? this.durationMs,
+    size: size ?? this.size,
+    dateAdded: dateAdded.present ? dateAdded.value : this.dateAdded,
+    ctimeNano: ctimeNano ?? this.ctimeNano,
+    firstSeen: firstSeen ?? this.firstSeen,
     isAvailable: isAvailable ?? this.isAvailable,
     languageTag: languageTag.present ? languageTag.value : this.languageTag,
     classifierConfidence: classifierConfidence ?? this.classifierConfidence,
     wasManuallyTagged: wasManuallyTagged ?? this.wasManuallyTagged,
+    fileHash: fileHash.present ? fileHash.value : this.fileHash,
     dateScanned: dateScanned.present ? dateScanned.value : this.dateScanned,
   );
   Song copyWithCompanion(SongsCompanion data) {
     return Song(
       id: data.id.present ? data.id.value : this.id,
+      path: data.path.present ? data.path.value : this.path,
+      canonicalPath: data.canonicalPath.present
+          ? data.canonicalPath.value
+          : this.canonicalPath,
       title: data.title.present ? data.title.value : this.title,
       artist: data.artist.present ? data.artist.value : this.artist,
       album: data.album.present ? data.album.value : this.album,
       albumArtist: data.albumArtist.present
           ? data.albumArtist.value
           : this.albumArtist,
-      durationMs: data.durationMs.present
-          ? data.durationMs.value
-          : this.durationMs,
       trackNumber: data.trackNumber.present
           ? data.trackNumber.value
           : this.trackNumber,
@@ -826,10 +953,14 @@ class Song extends DataClass implements Insertable<Song> {
           : this.discNumber,
       year: data.year.present ? data.year.value : this.year,
       genre: data.genre.present ? data.genre.value : this.genre,
-      path: data.path.present ? data.path.value : this.path,
       albumId: data.albumId.present ? data.albumId.value : this.albumId,
+      durationMs: data.durationMs.present
+          ? data.durationMs.value
+          : this.durationMs,
+      size: data.size.present ? data.size.value : this.size,
       dateAdded: data.dateAdded.present ? data.dateAdded.value : this.dateAdded,
-      fileHash: data.fileHash.present ? data.fileHash.value : this.fileHash,
+      ctimeNano: data.ctimeNano.present ? data.ctimeNano.value : this.ctimeNano,
+      firstSeen: data.firstSeen.present ? data.firstSeen.value : this.firstSeen,
       isAvailable: data.isAvailable.present
           ? data.isAvailable.value
           : this.isAvailable,
@@ -842,6 +973,7 @@ class Song extends DataClass implements Insertable<Song> {
       wasManuallyTagged: data.wasManuallyTagged.present
           ? data.wasManuallyTagged.value
           : this.wasManuallyTagged,
+      fileHash: data.fileHash.present ? data.fileHash.value : this.fileHash,
       dateScanned: data.dateScanned.present
           ? data.dateScanned.value
           : this.dateScanned,
@@ -852,224 +984,262 @@ class Song extends DataClass implements Insertable<Song> {
   String toString() {
     return (StringBuffer('Song(')
           ..write('id: $id, ')
+          ..write('path: $path, ')
+          ..write('canonicalPath: $canonicalPath, ')
           ..write('title: $title, ')
           ..write('artist: $artist, ')
           ..write('album: $album, ')
           ..write('albumArtist: $albumArtist, ')
-          ..write('durationMs: $durationMs, ')
           ..write('trackNumber: $trackNumber, ')
           ..write('discNumber: $discNumber, ')
           ..write('year: $year, ')
           ..write('genre: $genre, ')
-          ..write('path: $path, ')
           ..write('albumId: $albumId, ')
+          ..write('durationMs: $durationMs, ')
+          ..write('size: $size, ')
           ..write('dateAdded: $dateAdded, ')
-          ..write('fileHash: $fileHash, ')
+          ..write('ctimeNano: $ctimeNano, ')
+          ..write('firstSeen: $firstSeen, ')
           ..write('isAvailable: $isAvailable, ')
           ..write('languageTag: $languageTag, ')
           ..write('classifierConfidence: $classifierConfidence, ')
           ..write('wasManuallyTagged: $wasManuallyTagged, ')
+          ..write('fileHash: $fileHash, ')
           ..write('dateScanned: $dateScanned')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
+    path,
+    canonicalPath,
     title,
     artist,
     album,
     albumArtist,
-    durationMs,
     trackNumber,
     discNumber,
     year,
     genre,
-    path,
     albumId,
+    durationMs,
+    size,
     dateAdded,
-    fileHash,
+    ctimeNano,
+    firstSeen,
     isAvailable,
     languageTag,
     classifierConfidence,
     wasManuallyTagged,
+    fileHash,
     dateScanned,
-  );
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is Song &&
           other.id == this.id &&
+          other.path == this.path &&
+          other.canonicalPath == this.canonicalPath &&
           other.title == this.title &&
           other.artist == this.artist &&
           other.album == this.album &&
           other.albumArtist == this.albumArtist &&
-          other.durationMs == this.durationMs &&
           other.trackNumber == this.trackNumber &&
           other.discNumber == this.discNumber &&
           other.year == this.year &&
           other.genre == this.genre &&
-          other.path == this.path &&
           other.albumId == this.albumId &&
+          other.durationMs == this.durationMs &&
+          other.size == this.size &&
           other.dateAdded == this.dateAdded &&
-          other.fileHash == this.fileHash &&
+          other.ctimeNano == this.ctimeNano &&
+          other.firstSeen == this.firstSeen &&
           other.isAvailable == this.isAvailable &&
           other.languageTag == this.languageTag &&
           other.classifierConfidence == this.classifierConfidence &&
           other.wasManuallyTagged == this.wasManuallyTagged &&
+          other.fileHash == this.fileHash &&
           other.dateScanned == this.dateScanned);
 }
 
 class SongsCompanion extends UpdateCompanion<Song> {
   final Value<int> id;
+  final Value<String> path;
+  final Value<String> canonicalPath;
   final Value<String?> title;
   final Value<String?> artist;
   final Value<String?> album;
   final Value<String?> albumArtist;
-  final Value<int?> durationMs;
   final Value<int?> trackNumber;
   final Value<int?> discNumber;
   final Value<int?> year;
   final Value<String?> genre;
-  final Value<String> path;
-  final Value<int> albumId;
-  final Value<int> dateAdded;
-  final Value<String?> fileHash;
+  final Value<int?> albumId;
+  final Value<int> durationMs;
+  final Value<int> size;
+  final Value<int?> dateAdded;
+  final Value<int> ctimeNano;
+  final Value<int> firstSeen;
   final Value<bool> isAvailable;
   final Value<String?> languageTag;
   final Value<double> classifierConfidence;
   final Value<bool> wasManuallyTagged;
+  final Value<String?> fileHash;
   final Value<int?> dateScanned;
   const SongsCompanion({
     this.id = const Value.absent(),
+    this.path = const Value.absent(),
+    this.canonicalPath = const Value.absent(),
     this.title = const Value.absent(),
     this.artist = const Value.absent(),
     this.album = const Value.absent(),
     this.albumArtist = const Value.absent(),
-    this.durationMs = const Value.absent(),
     this.trackNumber = const Value.absent(),
     this.discNumber = const Value.absent(),
     this.year = const Value.absent(),
     this.genre = const Value.absent(),
-    this.path = const Value.absent(),
     this.albumId = const Value.absent(),
+    this.durationMs = const Value.absent(),
+    this.size = const Value.absent(),
     this.dateAdded = const Value.absent(),
-    this.fileHash = const Value.absent(),
+    this.ctimeNano = const Value.absent(),
+    this.firstSeen = const Value.absent(),
     this.isAvailable = const Value.absent(),
     this.languageTag = const Value.absent(),
     this.classifierConfidence = const Value.absent(),
     this.wasManuallyTagged = const Value.absent(),
+    this.fileHash = const Value.absent(),
     this.dateScanned = const Value.absent(),
   });
   SongsCompanion.insert({
     this.id = const Value.absent(),
+    required String path,
+    this.canonicalPath = const Value.absent(),
     this.title = const Value.absent(),
     this.artist = const Value.absent(),
     this.album = const Value.absent(),
     this.albumArtist = const Value.absent(),
-    this.durationMs = const Value.absent(),
     this.trackNumber = const Value.absent(),
     this.discNumber = const Value.absent(),
     this.year = const Value.absent(),
     this.genre = const Value.absent(),
-    required String path,
-    required int albumId,
-    required int dateAdded,
-    this.fileHash = const Value.absent(),
+    this.albumId = const Value.absent(),
+    this.durationMs = const Value.absent(),
+    this.size = const Value.absent(),
+    this.dateAdded = const Value.absent(),
+    this.ctimeNano = const Value.absent(),
+    this.firstSeen = const Value.absent(),
     this.isAvailable = const Value.absent(),
     this.languageTag = const Value.absent(),
     this.classifierConfidence = const Value.absent(),
     this.wasManuallyTagged = const Value.absent(),
+    this.fileHash = const Value.absent(),
     this.dateScanned = const Value.absent(),
-  }) : path = Value(path),
-       albumId = Value(albumId),
-       dateAdded = Value(dateAdded);
+  }) : path = Value(path);
   static Insertable<Song> custom({
     Expression<int>? id,
+    Expression<String>? path,
+    Expression<String>? canonicalPath,
     Expression<String>? title,
     Expression<String>? artist,
     Expression<String>? album,
     Expression<String>? albumArtist,
-    Expression<int>? durationMs,
     Expression<int>? trackNumber,
     Expression<int>? discNumber,
     Expression<int>? year,
     Expression<String>? genre,
-    Expression<String>? path,
     Expression<int>? albumId,
+    Expression<int>? durationMs,
+    Expression<int>? size,
     Expression<int>? dateAdded,
-    Expression<String>? fileHash,
+    Expression<int>? ctimeNano,
+    Expression<int>? firstSeen,
     Expression<bool>? isAvailable,
     Expression<String>? languageTag,
     Expression<double>? classifierConfidence,
     Expression<bool>? wasManuallyTagged,
+    Expression<String>? fileHash,
     Expression<int>? dateScanned,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (path != null) 'path': path,
+      if (canonicalPath != null) 'canonical_path': canonicalPath,
       if (title != null) 'title': title,
       if (artist != null) 'artist': artist,
       if (album != null) 'album': album,
       if (albumArtist != null) 'album_artist': albumArtist,
-      if (durationMs != null) 'duration_ms': durationMs,
       if (trackNumber != null) 'track_number': trackNumber,
       if (discNumber != null) 'disc_number': discNumber,
       if (year != null) 'year': year,
       if (genre != null) 'genre': genre,
-      if (path != null) 'path': path,
       if (albumId != null) 'album_id': albumId,
+      if (durationMs != null) 'duration_ms': durationMs,
+      if (size != null) 'size': size,
       if (dateAdded != null) 'date_added': dateAdded,
-      if (fileHash != null) 'file_hash': fileHash,
+      if (ctimeNano != null) 'ctime_nano': ctimeNano,
+      if (firstSeen != null) 'first_seen': firstSeen,
       if (isAvailable != null) 'is_available': isAvailable,
       if (languageTag != null) 'language_tag': languageTag,
       if (classifierConfidence != null)
         'classifier_confidence': classifierConfidence,
       if (wasManuallyTagged != null) 'was_manually_tagged': wasManuallyTagged,
+      if (fileHash != null) 'file_hash': fileHash,
       if (dateScanned != null) 'date_scanned': dateScanned,
     });
   }
 
   SongsCompanion copyWith({
     Value<int>? id,
+    Value<String>? path,
+    Value<String>? canonicalPath,
     Value<String?>? title,
     Value<String?>? artist,
     Value<String?>? album,
     Value<String?>? albumArtist,
-    Value<int?>? durationMs,
     Value<int?>? trackNumber,
     Value<int?>? discNumber,
     Value<int?>? year,
     Value<String?>? genre,
-    Value<String>? path,
-    Value<int>? albumId,
-    Value<int>? dateAdded,
-    Value<String?>? fileHash,
+    Value<int?>? albumId,
+    Value<int>? durationMs,
+    Value<int>? size,
+    Value<int?>? dateAdded,
+    Value<int>? ctimeNano,
+    Value<int>? firstSeen,
     Value<bool>? isAvailable,
     Value<String?>? languageTag,
     Value<double>? classifierConfidence,
     Value<bool>? wasManuallyTagged,
+    Value<String?>? fileHash,
     Value<int?>? dateScanned,
   }) {
     return SongsCompanion(
       id: id ?? this.id,
+      path: path ?? this.path,
+      canonicalPath: canonicalPath ?? this.canonicalPath,
       title: title ?? this.title,
       artist: artist ?? this.artist,
       album: album ?? this.album,
       albumArtist: albumArtist ?? this.albumArtist,
-      durationMs: durationMs ?? this.durationMs,
       trackNumber: trackNumber ?? this.trackNumber,
       discNumber: discNumber ?? this.discNumber,
       year: year ?? this.year,
       genre: genre ?? this.genre,
-      path: path ?? this.path,
       albumId: albumId ?? this.albumId,
+      durationMs: durationMs ?? this.durationMs,
+      size: size ?? this.size,
       dateAdded: dateAdded ?? this.dateAdded,
-      fileHash: fileHash ?? this.fileHash,
+      ctimeNano: ctimeNano ?? this.ctimeNano,
+      firstSeen: firstSeen ?? this.firstSeen,
       isAvailable: isAvailable ?? this.isAvailable,
       languageTag: languageTag ?? this.languageTag,
       classifierConfidence: classifierConfidence ?? this.classifierConfidence,
       wasManuallyTagged: wasManuallyTagged ?? this.wasManuallyTagged,
+      fileHash: fileHash ?? this.fileHash,
       dateScanned: dateScanned ?? this.dateScanned,
     );
   }
@@ -1079,6 +1249,12 @@ class SongsCompanion extends UpdateCompanion<Song> {
     final map = <String, Expression>{};
     if (id.present) {
       map['id'] = Variable<int>(id.value);
+    }
+    if (path.present) {
+      map['path'] = Variable<String>(path.value);
+    }
+    if (canonicalPath.present) {
+      map['canonical_path'] = Variable<String>(canonicalPath.value);
     }
     if (title.present) {
       map['title'] = Variable<String>(title.value);
@@ -1092,9 +1268,6 @@ class SongsCompanion extends UpdateCompanion<Song> {
     if (albumArtist.present) {
       map['album_artist'] = Variable<String>(albumArtist.value);
     }
-    if (durationMs.present) {
-      map['duration_ms'] = Variable<int>(durationMs.value);
-    }
     if (trackNumber.present) {
       map['track_number'] = Variable<int>(trackNumber.value);
     }
@@ -1107,17 +1280,23 @@ class SongsCompanion extends UpdateCompanion<Song> {
     if (genre.present) {
       map['genre'] = Variable<String>(genre.value);
     }
-    if (path.present) {
-      map['path'] = Variable<String>(path.value);
-    }
     if (albumId.present) {
       map['album_id'] = Variable<int>(albumId.value);
+    }
+    if (durationMs.present) {
+      map['duration_ms'] = Variable<int>(durationMs.value);
+    }
+    if (size.present) {
+      map['size'] = Variable<int>(size.value);
     }
     if (dateAdded.present) {
       map['date_added'] = Variable<int>(dateAdded.value);
     }
-    if (fileHash.present) {
-      map['file_hash'] = Variable<String>(fileHash.value);
+    if (ctimeNano.present) {
+      map['ctime_nano'] = Variable<int>(ctimeNano.value);
+    }
+    if (firstSeen.present) {
+      map['first_seen'] = Variable<int>(firstSeen.value);
     }
     if (isAvailable.present) {
       map['is_available'] = Variable<bool>(isAvailable.value);
@@ -1133,6 +1312,9 @@ class SongsCompanion extends UpdateCompanion<Song> {
     if (wasManuallyTagged.present) {
       map['was_manually_tagged'] = Variable<bool>(wasManuallyTagged.value);
     }
+    if (fileHash.present) {
+      map['file_hash'] = Variable<String>(fileHash.value);
+    }
     if (dateScanned.present) {
       map['date_scanned'] = Variable<int>(dateScanned.value);
     }
@@ -1143,23 +1325,27 @@ class SongsCompanion extends UpdateCompanion<Song> {
   String toString() {
     return (StringBuffer('SongsCompanion(')
           ..write('id: $id, ')
+          ..write('path: $path, ')
+          ..write('canonicalPath: $canonicalPath, ')
           ..write('title: $title, ')
           ..write('artist: $artist, ')
           ..write('album: $album, ')
           ..write('albumArtist: $albumArtist, ')
-          ..write('durationMs: $durationMs, ')
           ..write('trackNumber: $trackNumber, ')
           ..write('discNumber: $discNumber, ')
           ..write('year: $year, ')
           ..write('genre: $genre, ')
-          ..write('path: $path, ')
           ..write('albumId: $albumId, ')
+          ..write('durationMs: $durationMs, ')
+          ..write('size: $size, ')
           ..write('dateAdded: $dateAdded, ')
-          ..write('fileHash: $fileHash, ')
+          ..write('ctimeNano: $ctimeNano, ')
+          ..write('firstSeen: $firstSeen, ')
           ..write('isAvailable: $isAvailable, ')
           ..write('languageTag: $languageTag, ')
           ..write('classifierConfidence: $classifierConfidence, ')
           ..write('wasManuallyTagged: $wasManuallyTagged, ')
+          ..write('fileHash: $fileHash, ')
           ..write('dateScanned: $dateScanned')
           ..write(')'))
         .toString();
@@ -4453,45 +4639,53 @@ abstract class _$AppDatabase extends GeneratedDatabase {
 typedef $$SongsTableCreateCompanionBuilder =
     SongsCompanion Function({
       Value<int> id,
+      required String path,
+      Value<String> canonicalPath,
       Value<String?> title,
       Value<String?> artist,
       Value<String?> album,
       Value<String?> albumArtist,
-      Value<int?> durationMs,
       Value<int?> trackNumber,
       Value<int?> discNumber,
       Value<int?> year,
       Value<String?> genre,
-      required String path,
-      required int albumId,
-      required int dateAdded,
-      Value<String?> fileHash,
+      Value<int?> albumId,
+      Value<int> durationMs,
+      Value<int> size,
+      Value<int?> dateAdded,
+      Value<int> ctimeNano,
+      Value<int> firstSeen,
       Value<bool> isAvailable,
       Value<String?> languageTag,
       Value<double> classifierConfidence,
       Value<bool> wasManuallyTagged,
+      Value<String?> fileHash,
       Value<int?> dateScanned,
     });
 typedef $$SongsTableUpdateCompanionBuilder =
     SongsCompanion Function({
       Value<int> id,
+      Value<String> path,
+      Value<String> canonicalPath,
       Value<String?> title,
       Value<String?> artist,
       Value<String?> album,
       Value<String?> albumArtist,
-      Value<int?> durationMs,
       Value<int?> trackNumber,
       Value<int?> discNumber,
       Value<int?> year,
       Value<String?> genre,
-      Value<String> path,
-      Value<int> albumId,
-      Value<int> dateAdded,
-      Value<String?> fileHash,
+      Value<int?> albumId,
+      Value<int> durationMs,
+      Value<int> size,
+      Value<int?> dateAdded,
+      Value<int> ctimeNano,
+      Value<int> firstSeen,
       Value<bool> isAvailable,
       Value<String?> languageTag,
       Value<double> classifierConfidence,
       Value<bool> wasManuallyTagged,
+      Value<String?> fileHash,
       Value<int?> dateScanned,
     });
 
@@ -4569,6 +4763,16 @@ class $$SongsTableFilterComposer extends Composer<_$AppDatabase, $SongsTable> {
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get path => $composableBuilder(
+    column: $table.path,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get canonicalPath => $composableBuilder(
+    column: $table.canonicalPath,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get title => $composableBuilder(
     column: $table.title,
     builder: (column) => ColumnFilters(column),
@@ -4586,11 +4790,6 @@ class $$SongsTableFilterComposer extends Composer<_$AppDatabase, $SongsTable> {
 
   ColumnFilters<String> get albumArtist => $composableBuilder(
     column: $table.albumArtist,
-    builder: (column) => ColumnFilters(column),
-  );
-
-  ColumnFilters<int> get durationMs => $composableBuilder(
-    column: $table.durationMs,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4614,13 +4813,18 @@ class $$SongsTableFilterComposer extends Composer<_$AppDatabase, $SongsTable> {
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<String> get path => $composableBuilder(
-    column: $table.path,
+  ColumnFilters<int> get albumId => $composableBuilder(
+    column: $table.albumId,
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<int> get albumId => $composableBuilder(
-    column: $table.albumId,
+  ColumnFilters<int> get durationMs => $composableBuilder(
+    column: $table.durationMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get size => $composableBuilder(
+    column: $table.size,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4629,8 +4833,13 @@ class $$SongsTableFilterComposer extends Composer<_$AppDatabase, $SongsTable> {
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<String> get fileHash => $composableBuilder(
-    column: $table.fileHash,
+  ColumnFilters<int> get ctimeNano => $composableBuilder(
+    column: $table.ctimeNano,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get firstSeen => $composableBuilder(
+    column: $table.firstSeen,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4651,6 +4860,11 @@ class $$SongsTableFilterComposer extends Composer<_$AppDatabase, $SongsTable> {
 
   ColumnFilters<bool> get wasManuallyTagged => $composableBuilder(
     column: $table.wasManuallyTagged,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get fileHash => $composableBuilder(
+    column: $table.fileHash,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4749,6 +4963,16 @@ class $$SongsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get path => $composableBuilder(
+    column: $table.path,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get canonicalPath => $composableBuilder(
+    column: $table.canonicalPath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get title => $composableBuilder(
     column: $table.title,
     builder: (column) => ColumnOrderings(column),
@@ -4766,11 +4990,6 @@ class $$SongsTableOrderingComposer
 
   ColumnOrderings<String> get albumArtist => $composableBuilder(
     column: $table.albumArtist,
-    builder: (column) => ColumnOrderings(column),
-  );
-
-  ColumnOrderings<int> get durationMs => $composableBuilder(
-    column: $table.durationMs,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -4794,13 +5013,18 @@ class $$SongsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get path => $composableBuilder(
-    column: $table.path,
+  ColumnOrderings<int> get albumId => $composableBuilder(
+    column: $table.albumId,
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<int> get albumId => $composableBuilder(
-    column: $table.albumId,
+  ColumnOrderings<int> get durationMs => $composableBuilder(
+    column: $table.durationMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get size => $composableBuilder(
+    column: $table.size,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -4809,8 +5033,13 @@ class $$SongsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<String> get fileHash => $composableBuilder(
-    column: $table.fileHash,
+  ColumnOrderings<int> get ctimeNano => $composableBuilder(
+    column: $table.ctimeNano,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get firstSeen => $composableBuilder(
+    column: $table.firstSeen,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -4834,6 +5063,11 @@ class $$SongsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get fileHash => $composableBuilder(
+    column: $table.fileHash,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get dateScanned => $composableBuilder(
     column: $table.dateScanned,
     builder: (column) => ColumnOrderings(column),
@@ -4852,6 +5086,14 @@ class $$SongsTableAnnotationComposer
   GeneratedColumn<int> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
 
+  GeneratedColumn<String> get path =>
+      $composableBuilder(column: $table.path, builder: (column) => column);
+
+  GeneratedColumn<String> get canonicalPath => $composableBuilder(
+    column: $table.canonicalPath,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get title =>
       $composableBuilder(column: $table.title, builder: (column) => column);
 
@@ -4863,11 +5105,6 @@ class $$SongsTableAnnotationComposer
 
   GeneratedColumn<String> get albumArtist => $composableBuilder(
     column: $table.albumArtist,
-    builder: (column) => column,
-  );
-
-  GeneratedColumn<int> get durationMs => $composableBuilder(
-    column: $table.durationMs,
     builder: (column) => column,
   );
 
@@ -4887,17 +5124,25 @@ class $$SongsTableAnnotationComposer
   GeneratedColumn<String> get genre =>
       $composableBuilder(column: $table.genre, builder: (column) => column);
 
-  GeneratedColumn<String> get path =>
-      $composableBuilder(column: $table.path, builder: (column) => column);
-
   GeneratedColumn<int> get albumId =>
       $composableBuilder(column: $table.albumId, builder: (column) => column);
+
+  GeneratedColumn<int> get durationMs => $composableBuilder(
+    column: $table.durationMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get size =>
+      $composableBuilder(column: $table.size, builder: (column) => column);
 
   GeneratedColumn<int> get dateAdded =>
       $composableBuilder(column: $table.dateAdded, builder: (column) => column);
 
-  GeneratedColumn<String> get fileHash =>
-      $composableBuilder(column: $table.fileHash, builder: (column) => column);
+  GeneratedColumn<int> get ctimeNano =>
+      $composableBuilder(column: $table.ctimeNano, builder: (column) => column);
+
+  GeneratedColumn<int> get firstSeen =>
+      $composableBuilder(column: $table.firstSeen, builder: (column) => column);
 
   GeneratedColumn<bool> get isAvailable => $composableBuilder(
     column: $table.isAvailable,
@@ -4918,6 +5163,9 @@ class $$SongsTableAnnotationComposer
     column: $table.wasManuallyTagged,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get fileHash =>
+      $composableBuilder(column: $table.fileHash, builder: (column) => column);
 
   GeneratedColumn<int> get dateScanned => $composableBuilder(
     column: $table.dateScanned,
@@ -5033,85 +5281,101 @@ class $$SongsTableTableManager
           updateCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
+                Value<String> path = const Value.absent(),
+                Value<String> canonicalPath = const Value.absent(),
                 Value<String?> title = const Value.absent(),
                 Value<String?> artist = const Value.absent(),
                 Value<String?> album = const Value.absent(),
                 Value<String?> albumArtist = const Value.absent(),
-                Value<int?> durationMs = const Value.absent(),
                 Value<int?> trackNumber = const Value.absent(),
                 Value<int?> discNumber = const Value.absent(),
                 Value<int?> year = const Value.absent(),
                 Value<String?> genre = const Value.absent(),
-                Value<String> path = const Value.absent(),
-                Value<int> albumId = const Value.absent(),
-                Value<int> dateAdded = const Value.absent(),
-                Value<String?> fileHash = const Value.absent(),
+                Value<int?> albumId = const Value.absent(),
+                Value<int> durationMs = const Value.absent(),
+                Value<int> size = const Value.absent(),
+                Value<int?> dateAdded = const Value.absent(),
+                Value<int> ctimeNano = const Value.absent(),
+                Value<int> firstSeen = const Value.absent(),
                 Value<bool> isAvailable = const Value.absent(),
                 Value<String?> languageTag = const Value.absent(),
                 Value<double> classifierConfidence = const Value.absent(),
                 Value<bool> wasManuallyTagged = const Value.absent(),
+                Value<String?> fileHash = const Value.absent(),
                 Value<int?> dateScanned = const Value.absent(),
               }) => SongsCompanion(
                 id: id,
+                path: path,
+                canonicalPath: canonicalPath,
                 title: title,
                 artist: artist,
                 album: album,
                 albumArtist: albumArtist,
-                durationMs: durationMs,
                 trackNumber: trackNumber,
                 discNumber: discNumber,
                 year: year,
                 genre: genre,
-                path: path,
                 albumId: albumId,
+                durationMs: durationMs,
+                size: size,
                 dateAdded: dateAdded,
-                fileHash: fileHash,
+                ctimeNano: ctimeNano,
+                firstSeen: firstSeen,
                 isAvailable: isAvailable,
                 languageTag: languageTag,
                 classifierConfidence: classifierConfidence,
                 wasManuallyTagged: wasManuallyTagged,
+                fileHash: fileHash,
                 dateScanned: dateScanned,
               ),
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
+                required String path,
+                Value<String> canonicalPath = const Value.absent(),
                 Value<String?> title = const Value.absent(),
                 Value<String?> artist = const Value.absent(),
                 Value<String?> album = const Value.absent(),
                 Value<String?> albumArtist = const Value.absent(),
-                Value<int?> durationMs = const Value.absent(),
                 Value<int?> trackNumber = const Value.absent(),
                 Value<int?> discNumber = const Value.absent(),
                 Value<int?> year = const Value.absent(),
                 Value<String?> genre = const Value.absent(),
-                required String path,
-                required int albumId,
-                required int dateAdded,
-                Value<String?> fileHash = const Value.absent(),
+                Value<int?> albumId = const Value.absent(),
+                Value<int> durationMs = const Value.absent(),
+                Value<int> size = const Value.absent(),
+                Value<int?> dateAdded = const Value.absent(),
+                Value<int> ctimeNano = const Value.absent(),
+                Value<int> firstSeen = const Value.absent(),
                 Value<bool> isAvailable = const Value.absent(),
                 Value<String?> languageTag = const Value.absent(),
                 Value<double> classifierConfidence = const Value.absent(),
                 Value<bool> wasManuallyTagged = const Value.absent(),
+                Value<String?> fileHash = const Value.absent(),
                 Value<int?> dateScanned = const Value.absent(),
               }) => SongsCompanion.insert(
                 id: id,
+                path: path,
+                canonicalPath: canonicalPath,
                 title: title,
                 artist: artist,
                 album: album,
                 albumArtist: albumArtist,
-                durationMs: durationMs,
                 trackNumber: trackNumber,
                 discNumber: discNumber,
                 year: year,
                 genre: genre,
-                path: path,
                 albumId: albumId,
+                durationMs: durationMs,
+                size: size,
                 dateAdded: dateAdded,
-                fileHash: fileHash,
+                ctimeNano: ctimeNano,
+                firstSeen: firstSeen,
                 isAvailable: isAvailable,
                 languageTag: languageTag,
                 classifierConfidence: classifierConfidence,
                 wasManuallyTagged: wasManuallyTagged,
+                fileHash: fileHash,
                 dateScanned: dateScanned,
               ),
           withReferenceMapper: (p0) => p0

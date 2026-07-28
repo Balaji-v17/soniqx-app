@@ -20,14 +20,14 @@ class SyncWorker {
             title: Value(raw.title ?? 'Unknown Track'),
             artist: Value(raw.artist ?? 'Unknown Artist'),
             album: Value(raw.album ?? 'Unknown Album'),
-            albumId: raw.albumId ?? 0, // 🎯 FIXED: Wrapped in Value() for nullable support
+            albumId: Value(raw.albumId ?? 0),
             albumArtist: Value(raw.albumArtist),
             genre: Value(raw.genre),
             durationMs: Value(raw.durationMs ?? 0),
             trackNumber: Value(raw.trackNumber ?? 0),
             discNumber: Value(raw.discNumber ?? 1),
             year: Value(raw.year),
-         dateAdded: raw.dateAdded ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000),
+            dateAdded: Value(raw.dateAdded ?? (DateTime.now().millisecondsSinceEpoch ~/ 1000)),
           ),
           mode: InsertMode.insertOrReplace,
         );

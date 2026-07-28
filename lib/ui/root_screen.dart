@@ -4,11 +4,12 @@
 // ============================================================
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'screens/search_screen.dart';
+
 import 'screens/home_screen.dart'; 
-import 'widgets/mini_player.dart';
+import 'screens/search_screen.dart';
 import 'screens/playlists_screen.dart'; 
 import 'screens/settings_screen.dart';
+import 'widgets/mini_player.dart';
 
 class RootScreen extends ConsumerStatefulWidget {
   const RootScreen({super.key});
@@ -20,15 +21,17 @@ class RootScreen extends ConsumerStatefulWidget {
 class _RootScreenState extends ConsumerState<RootScreen> {
   int _currentIndex = 0;
 
-  final List<Widget> _screens = const [
-    HomeScreen(), 
-    SearchScreen(), 
-    PlaylistsScreen(), 
-    SettingsScreen(),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    // 🎯 THE FIX: Move the list inside the build method and remove all 'const' wrappers
+    // This stops Dart from trying to strictly evaluate the constructors at compile-time.
+    final List<Widget> screens = [
+      HomeScreen(),
+      SearchScreen(), 
+      PlaylistsScreen(), 
+      SettingsScreen(),
+    ];
+
     return PopScope(
       canPop: false, 
       onPopInvoked: (didPop) {
@@ -44,7 +47,7 @@ class _RootScreenState extends ConsumerState<RootScreen> {
               padding: const EdgeInsets.only(bottom: 80.0),
               child: IndexedStack(
                 index: _currentIndex,
-                children: _screens,
+                children: screens,
               ),
             ),
 
@@ -57,7 +60,6 @@ class _RootScreenState extends ConsumerState<RootScreen> {
           ],
         ),
 
-        // 🎯 DYNAMIC NAVIGATION BAR: Consistent outlined -> rounded filled pairs
         bottomNavigationBar: NavigationBar(
           selectedIndex: _currentIndex,
           onDestinationSelected: (index) {

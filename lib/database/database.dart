@@ -1,6 +1,6 @@
 // ============================================================
 //  SONIQ — lib/database/database.dart
-//  Drift 2.34+ | SQLite FTS5 | WAL Mode | July 2026
+//  Drift 2.34+ | SQLite FTS5 | WAL Mode
 // ============================================================
 
 import 'dart:io';
@@ -16,25 +16,36 @@ part 'database.g.dart';
 // ============================================================
 
 class Songs extends Table {
-  IntColumn get id            => integer()();
-  TextColumn get title        => text().nullable()();
-  TextColumn get artist       => text().nullable()();
-  TextColumn get album        => text().nullable()();
-  TextColumn get albumArtist  => text().nullable()();
-  IntColumn  get durationMs   => integer().nullable()();
-  IntColumn  get trackNumber  => integer().nullable()();
-  IntColumn  get discNumber   => integer().nullable()();
-  IntColumn  get year         => integer().nullable()();
-  TextColumn get genre        => text().nullable()();
-  TextColumn get path         => text()();
-  IntColumn  get albumId      => integer()();
-  IntColumn  get dateAdded    => integer()();
-  TextColumn get fileHash     => text().nullable()();
-  BoolColumn get isAvailable  => boolean().withDefault(const Constant(true))();
-  TextColumn get languageTag  => text().nullable()();
+  IntColumn get id => integer()();
+  TextColumn get path => text()();
+  TextColumn get canonicalPath => text().withDefault(const Constant(''))();
+  
+  TextColumn get title => text().nullable()();
+  TextColumn get artist => text().nullable()();
+  TextColumn get album => text().nullable()();
+  TextColumn get albumArtist => text().nullable()();
+  
+  IntColumn get trackNumber => integer().nullable()();
+  IntColumn get discNumber => integer().nullable()();
+  IntColumn get year => integer().nullable()();
+  TextColumn get genre => text().nullable()();
+  IntColumn get albumId => integer().nullable()();
+  
+  IntColumn get durationMs => integer().withDefault(const Constant(0))();
+  IntColumn get size => integer().withDefault(const Constant(0))();
+  IntColumn get dateAdded => integer().nullable()();
+  
+  // High-precision nanosecond POSIX ctime
+  IntColumn get ctimeNano => integer().withDefault(const Constant(0))();
+  IntColumn get firstSeen => integer().withDefault(const Constant(0))();
+
+  BoolColumn get isAvailable => boolean().withDefault(const Constant(true))();
+  TextColumn get languageTag => text().nullable()();
   RealColumn get classifierConfidence => real().withDefault(const Constant(0.0))();
   BoolColumn get wasManuallyTagged => boolean().withDefault(const Constant(false))();
-  IntColumn  get dateScanned  => integer().nullable()();
+  
+  TextColumn get fileHash => text().nullable()();
+  IntColumn get dateScanned => integer().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -58,12 +69,12 @@ class PlaylistEntries extends Table {
 }
 
 class PlayHistory extends Table {
-  IntColumn      get id            => integer().autoIncrement()();
-  IntColumn      get songId        => integer().references(Songs, #id, onDelete: KeyAction.cascade)();
-  DateTimeColumn get playedAt      => dateTime().withDefault(currentDateAndTime)();
-  IntColumn      get listenedMs    => integer().withDefault(const Constant(0))();
-  BoolColumn     get counted       => boolean().withDefault(const Constant(false))();
-  BoolColumn     get skippedEarly  => boolean().withDefault(const Constant(false))();
+  IntColumn      get id           => integer().autoIncrement()();
+  IntColumn      get songId       => integer().references(Songs, #id, onDelete: KeyAction.cascade)();
+  DateTimeColumn get playedAt     => dateTime().withDefault(currentDateAndTime)();
+  IntColumn      get listenedMs   => integer().withDefault(const Constant(0))();
+  BoolColumn     get counted      => boolean().withDefault(const Constant(false))();
+  BoolColumn     get skippedEarly => boolean().withDefault(const Constant(false))();
 }
 
 class SongStats extends Table {
@@ -610,7 +621,7 @@ class LanguageDao extends DatabaseAccessor<AppDatabase> with _$LanguageDaoMixin 
         artist_key,
         corrected_language,
         COUNT(*) as vote_count,
-        SUM(COUNT(*)) OVER (PARTITION BY artist_key) as total_votes
+        SUM(COUNT(*) OVER (PARTITION BY artist_key)) as total_votes
       FROM user_corrections
       WHERE applied_to_seeds = 0
       GROUP BY artist_key, corrected_language
@@ -730,49 +741,61 @@ class SettingsDao extends DatabaseAccessor<AppDatabase> with _$SettingsDaoMixin 
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
-  late final songsDao     = SongsDao(this);
-  late final playlistsDao = PlaylistsDao(this);
-  late final historyDao   = HistoryDao(this);
-  late final languageDao  = LanguageDao(this);
-  late final settingsDao  = SettingsDao(this);
+Future<void> insertSongsBatch(dynamic rawInput) async {
+    // 🎯 THE FIX: Fetch existing durations to PREVENT the scanner from overwriting healed values with 0
+    final existingDurations = <int, int>{};
+    final currentSongs = await select(songs).get();
+    for (final s in currentSongs) {
+      existingDurations[s.id] = s.durationMs;
+    }
 
-  Future<void> insertSongsBatch(List<Map<String, dynamic>> rawSongs) async {
     await batch((b) {
-      final companions = rawSongs.map((raw) {
-        final rawTitle = raw['title']?.toString();
-        final safeTitle = (rawTitle != null && rawTitle.isNotEmpty) ? rawTitle : 'Unknown Track';
-        
-        String? parsedAlbum = raw['album']?.toString();
-        if (parsedAlbum == null || parsedAlbum.trim().isEmpty || parsedAlbum.toLowerCase() == '<unknown>') {
-           parsedAlbum = '$safeTitle (Single)';
-        }
+      if (rawInput is List<SongsCompanion>) {
+        b.insertAllOnConflictUpdate(songs, rawInput);
+      } else if (rawInput is List<Map<String, dynamic>>) {
+        final companions = rawInput.map((raw) {
+          final rawId = int.tryParse(raw['id']?.toString() ?? '0') ?? 0;
+          final rawTitle = raw['title']?.toString();
+          final safeTitle = (rawTitle != null && rawTitle.isNotEmpty) ? rawTitle : 'Unknown Track';
+          
+          String? parsedAlbum = raw['album']?.toString();
+          if (parsedAlbum == null || parsedAlbum.trim().isEmpty || parsedAlbum.toLowerCase() == '<unknown>') {
+             parsedAlbum = '$safeTitle (Single)';
+          }
 
-        int finalAlbumId = int.tryParse(raw['album_id']?.toString() ?? '0') ?? 0;
-        if (finalAlbumId == 0) {
-           finalAlbumId = parsedAlbum.hashCode;
-        }
+          int finalAlbumId = int.tryParse(raw['album_id']?.toString() ?? '0') ?? 0;
+          if (finalAlbumId == 0) {
+             finalAlbumId = parsedAlbum.hashCode;
+          }
 
-        return SongsCompanion(
-          id: Value(int.tryParse(raw['id'].toString()) ?? 0),
-          title: Value(safeTitle),
-          artist: Value(raw['artist']?.toString() ?? 'Unknown Artist'),
-          album: Value(parsedAlbum), 
-          path: Value(raw['data_uri']?.toString() ?? ''), 
-          albumId: Value(finalAlbumId), 
-          durationMs: Value(() {
-            final rawVal = int.tryParse(raw['duration']?.toString() ?? '') ?? 0;
-            return rawVal > 0 && rawVal < 10000 ? rawVal * 1000 : rawVal;
-          }()),
-          dateAdded: Value(DateTime.now().millisecondsSinceEpoch),
-        );
-      }).toList();
-      
-      b.insertAllOnConflictUpdate(songs, companions);
+          // 🎯 THE FIX: Keep the healed duration if MediaStore returns 0!
+          int finalDuration = 0;
+          final rawVal = int.tryParse(raw['duration']?.toString() ?? '') ?? 0;
+          if (rawVal > 0) {
+            finalDuration = rawVal < 10000 ? rawVal * 1000 : rawVal;
+          } else if (existingDurations.containsKey(rawId) && existingDurations[rawId]! > 0) {
+            finalDuration = existingDurations[rawId]!; 
+          }
+
+          return SongsCompanion(
+            id: Value(rawId),
+            title: Value(safeTitle),
+            artist: Value(raw['artist']?.toString() ?? 'Unknown Artist'),
+            album: Value(parsedAlbum), 
+            path: Value(raw['data_uri']?.toString() ?? raw['path']?.toString() ?? ''), 
+            albumId: Value(finalAlbumId), 
+            durationMs: Value(finalDuration), // 🎯 Use the safe duration
+            dateAdded: Value(int.tryParse(raw['dateAddedSec']?.toString() ?? '') ?? DateTime.now().millisecondsSinceEpoch),
+            ctimeNano: Value(int.tryParse(raw['ctimeNano']?.toString() ?? '0') ?? 0),
+          );
+        }).toList();
+
+        b.insertAllOnConflictUpdate(songs, companions);
+      }
     });
   }
-
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -860,6 +883,16 @@ class AppDatabase extends _$AppDatabase {
            strftime('%s','now'), strftime('%s','now'));
       ''');
     },
+    onUpgrade: (Migrator m, int from, int to) async {
+      if (from < 2) {
+        await m.addColumn(songs, songs.size);
+        await m.addColumn(songs, songs.canonicalPath);
+        await m.addColumn(songs, songs.firstSeen);
+      }
+      if (from < 3) {
+        await m.addColumn(songs, songs.ctimeNano);
+      }
+    },
   );
 }
 
@@ -881,9 +914,6 @@ LazyDatabase _openConnection() {
         rawDb.execute('PRAGMA cache_size=-20000;');
         rawDb.execute('PRAGMA temp_store=MEMORY;');
         rawDb.execute('PRAGMA mmap_size=268435456;');
-        
-        // 🎯 THE FIX: SQLite WAL Auto-Checkpointing
-        // This prevents the Write-Ahead Log from locking read queries during background scans.
         rawDb.execute('PRAGMA wal_autocheckpoint=100;');
       },
     );

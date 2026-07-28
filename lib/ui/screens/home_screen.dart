@@ -15,6 +15,8 @@ import 'package:soniq/providers/library_filter_provider.dart';
 import 'package:soniq/ui/widgets/add_to_playlist_sheet.dart';
 import 'package:soniq/ui/widgets/manual_tag_sheet.dart';
 import 'package:soniq/ui/widgets/fallback_album_art.dart';
+// 🎯 Added the Scrubber import!
+import 'package:soniq/ui/widgets/alphabet_scrubber.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audio_service/audio_service.dart';
@@ -26,7 +28,6 @@ import 'package:soniq/audio/artwork_extractor.dart';
 import 'package:soniq/ui/screens/playlist_detail_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:soniq/audio/shuffle_engine.dart';
-// 🎯 FIXED: Added the missing import for ScanPhase!
 import 'package:soniq/audio/music_scanner.dart';
 
 Future<List<MediaItem>> _buildMediaItems(List<Song> songs, {int activeIndex = 0}) async {
@@ -65,11 +66,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _isSelectionMode = false;
   final Set<int> _selectedSongIds = {};
 
+  // 🎯 Setup the custom scroll controller for the Scrubber
+  final _HeaderOffsetScrollController _scrollController = _HeaderOffsetScrollController();
+  int _currentTrackCount = 0;
+
   @override
   void initState() {
     super.initState();
     _loadUserName();
     
+    _scrollController.getListLength = () => _currentTrackCount;
+
     Future.microtask(() async {
       ref.read(languageServiceProvider).runWeeklyMaintenance();
       _healSeededTracks();
@@ -80,9 +87,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
   }
 
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   Future<void> _healSeededTracks() async {
     final db = ref.read(databaseProvider);
-    final silentPlayer = AudioPlayer();
 
     try {
       final brokenSongs = await (db.select(db.songs)
@@ -90,43 +102,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
       if (brokenSongs.isEmpty) return;
 
-      final companions = <SongsCompanion>[];
-
       for (var i = 0; i < brokenSongs.length; i++) {
         final song = brokenSongs[i];
         if (song.path.isNotEmpty) {
+          final player = AudioPlayer(); 
           try {
-            final duration = await silentPlayer.setFilePath(song.path);
+            final duration = await player.setFilePath(song.path).timeout(const Duration(seconds: 2));
             if (duration != null && duration.inMilliseconds > 0) {
-              companions.add(
-                SongsCompanion(
-                  id: drift.Value(song.id),
-                  durationMs: drift.Value(duration.inMilliseconds),
-                ),
+              await (db.update(db.songs)..where((t) => t.id.equals(song.id))).write(
+                SongsCompanion(durationMs: drift.Value(duration.inMilliseconds)),
               );
             }
-          } catch (_) {}
-        }
-
-        if (i % 5 == 0) {
-          await Future.delayed(const Duration(milliseconds: 16));
-        }
-      }
-
-      if (companions.isNotEmpty) {
-        await db.batch((b) {
-          for (final companion in companions) {
-            b.update(
-              db.songs,
-              companion,
-              where: (t) => t.id.equals(companion.id.value),
-            );
+          } catch (_) {
+            // Silently ignore corrupted files
+          } finally {
+            await player.dispose(); 
           }
-        });
+        }
+        await Future.delayed(const Duration(milliseconds: 300));
       }
-    } finally {
-      await silentPlayer.dispose();
-    }
+    } catch (_) {}
   }
 
   Future<void> _loadUserName() async {
@@ -312,6 +307,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final database = ref.watch(databaseProvider);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final scanState = ref.watch(scanProvider);
+    final filteredSongs = ref.watch(filteredSongsProvider).value ?? [];
+    final isSortingAZ = ref.watch(sortOrderProvider) == SortOrder.aToZ;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -338,363 +336,412 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             )
           : null,
       body: SafeArea(
-        child: CustomScrollView(
-          key: const PageStorageKey('home_main_scroll_key'),
-          slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+        child: Stack(
+          children: [
+            CustomScrollView(
+              controller: _scrollController, 
+              key: const PageStorageKey('home_main_scroll_key'),
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          getGreeting(),
-                          style: TextStyle(color: colorScheme.onBackground.withOpacity(0.54), fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1.5),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              getGreeting(),
+                              style: TextStyle(color: colorScheme.onBackground.withOpacity(0.54), fontSize: 12, fontWeight: FontWeight.w600, letterSpacing: 1.5),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _isLoadingName ? '...' : _userName,
+                              style: TextStyle(color: colorScheme.onBackground, fontSize: 32, fontWeight: FontWeight.bold),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _isLoadingName ? '...' : _userName,
-                          style: TextStyle(color: colorScheme.onBackground, fontSize: 32, fontWeight: FontWeight.bold),
+                        GestureDetector(
+                          onTap: _showNamePromptDialog,
+                          child: CircleAvatar(
+                            radius: 24,
+                            backgroundColor: colorScheme.surface,
+                            child: Text(
+                              _isLoadingName ? '' : _userName[0].toUpperCase(), 
+                              style: TextStyle(color: colorScheme.onSurface, fontSize: 18, fontWeight: FontWeight.bold)
+                            ),
+                          ),
                         ),
                       ],
                     ),
-                    GestureDetector(
-                      onTap: _showNamePromptDialog,
-                      child: CircleAvatar(
-                        radius: 24,
-                        backgroundColor: colorScheme.surface,
-                        child: Text(
-                          _isLoadingName ? '' : _userName[0].toUpperCase(), 
-                          style: TextStyle(color: colorScheme.onSurface, fontSize: 18, fontWeight: FontWeight.bold)
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
 
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  children: [
-                    Row(
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Column(
                       children: [
-                        Expanded(
-                          child: _QuickActionCard(
-                            icon: Icons.favorite_border_rounded, 
-                            label: 'Liked',
-                            onTap: () async {
-                              final playlist = await (database.select(database.playlists)..where((p) => p.id.equals(1))).getSingleOrNull();
-                              if (playlist != null && context.mounted) {
-                                Navigator.of(context).push(MaterialPageRoute(
-                                  builder: (context) => PlaylistDetailScreen(playlist: playlist),
-                                ));
-                              }
-                            },
-                          ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _QuickActionCard(
+                                icon: Icons.favorite_border_rounded, 
+                                label: 'Liked',
+                                onTap: () async {
+                                  final playlist = await (database.select(database.playlists)..where((p) => p.id.equals(1))).getSingleOrNull();
+                                  if (playlist != null && context.mounted) {
+                                    Navigator.of(context).push(MaterialPageRoute(
+                                      builder: (context) => PlaylistDetailScreen(playlist: playlist),
+                                    ));
+                                  }
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _QuickActionCard(
+                                icon: Icons.access_time_rounded, 
+                                label: 'Recently Added',
+                                onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                                  builder: (context) => const RecentlyAddedScreen(),
+                                )),
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _QuickActionCard(
-                            icon: Icons.access_time_rounded, 
-                            label: 'Recently Added',
-                            onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                              builder: (context) => const RecentlyAddedScreen(),
-                            )),
-                          ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _QuickActionCard(
+                                icon: Icons.local_fire_department_outlined, 
+                                label: 'Most Played',
+                                onTap: () async {
+                                  final playlist = await (database.select(database.playlists)..where((p) => p.id.equals(3))).getSingleOrNull();
+                                  if (playlist != null && context.mounted) {
+                                    Navigator.of(context).push(MaterialPageRoute(
+                                      builder: (context) => PlaylistDetailScreen(playlist: playlist),
+                                    ));
+                                  }
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _QuickActionCard(
+                                icon: Icons.shuffle_rounded, 
+                                label: 'Shuffle All',
+                                onTap: () async {
+                                  final handler = ref.read(audioHandlerProvider);
+                                  final songs = await database.songsDao.watchAllAvailable().first;
+                                  if (songs.isEmpty) return;
+
+                                  final recentHistory = await database.historyDao.watchRecentlyPlayed(limit: 50).first;
+                                  final recentIds = recentHistory.map((s) => s.id).toSet();
+
+                                  final shuffleEngine = SoniqShuffleEngine();
+                                  final shuffleResult = shuffleEngine.generateQueue(songs, recentlyPlayedIds: recentIds);
+                                  
+                                  if (shuffleResult.queue.isNotEmpty) {
+                                    await _recordPlayHistory(context, database, shuffleResult.queue.first);
+                                  }
+
+                                  final items = await _buildMediaItems(shuffleResult.queue, activeIndex: 0);
+
+                                  await handler.updateQueue(items);
+                                  await handler.setShuffleMode(AudioServiceShuffleMode.all);
+                                  await handler.skipToQueueItem(0);
+                                  await handler.play();
+                                },
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _QuickActionCard(
-                            icon: Icons.local_fire_department_outlined, 
-                            label: 'Most Played',
-                            onTap: () async {
-                              final playlist = await (database.select(database.playlists)..where((p) => p.id.equals(3))).getSingleOrNull();
-                              if (playlist != null && context.mounted) {
-                                Navigator.of(context).push(MaterialPageRoute(
-                                  builder: (context) => PlaylistDetailScreen(playlist: playlist),
-                                ));
-                              }
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _QuickActionCard(
-                            icon: Icons.shuffle_rounded, 
-                            label: 'Shuffle All',
-                            onTap: () async {
-                              final handler = ref.read(audioHandlerProvider);
-                              final songs = await database.songsDao.watchAllAvailable().first;
-                              if (songs.isEmpty) return;
-
-                              final recentHistory = await database.historyDao.watchRecentlyPlayed(limit: 50).first;
-                              final recentIds = recentHistory.map((s) => s.id).toSet();
-
-                              final shuffleEngine = SoniqShuffleEngine();
-                              final shuffleResult = shuffleEngine.generateQueue(songs, recentlyPlayedIds: recentIds);
-                              
-                              if (shuffleResult.queue.isNotEmpty) {
-                                await _recordPlayHistory(context, database, shuffleResult.queue.first);
-                              }
-
-                              final items = await _buildMediaItems(shuffleResult.queue, activeIndex: 0);
-
-                              await handler.updateQueue(items);
-                              await handler.setShuffleMode(AudioServiceShuffleMode.all);
-                              await handler.skipToQueueItem(0);
-                              await handler.play();
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
 
-            const SliverToBoxAdapter(child: SizedBox(height: 32)),
+                const SliverToBoxAdapter(child: SizedBox(height: 32)),
 
-            SliverToBoxAdapter(
-              child: _buildSectionTitle(
-                'Jump back in', 
-                hasViewAll: true,
-                onViewAll: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (context) => const PlayHistoryScreen(),
-                )),
-              ),
-            ),
+                SliverToBoxAdapter(
+                  child: _buildSectionTitle(
+                    'Jump back in', 
+                    hasViewAll: true,
+                    onViewAll: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (context) => const PlayHistoryScreen(),
+                    )),
+                  ),
+                ),
 
-            SliverToBoxAdapter(
-              child: StreamBuilder<List<Song>>(
-                stream: database.historyDao.watchRecentlyPlayed(limit: 10),
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                      child: Text('Database Error:\n${snapshot.error}', style: const TextStyle(color: Colors.redAccent)),
-                    );
-                  }
+                SliverToBoxAdapter(
+                  child: StreamBuilder<List<Song>>(
+                    stream: database.historyDao.watchRecentlyPlayed(limit: 10),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasError) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                          child: Text('Database Error:\n${snapshot.error}', style: const TextStyle(color: Colors.redAccent)),
+                        );
+                      }
 
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return SkeletonPulse(
-                      child: SizedBox(
-                        height: 220,
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return SkeletonPulse(
+                          child: SizedBox(
+                            height: 220,
+                            child: ListView.builder(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              scrollDirection: Axis.horizontal,
+                              itemCount: 4,
+                              itemBuilder: (context, index) => Container(
+                                width: 140,
+                                margin: const EdgeInsets.symmetric(horizontal: 8),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(width: 140, height: 140, decoration: BoxDecoration(color: colorScheme.onBackground.withOpacity(0.1), borderRadius: BorderRadius.circular(12))),
+                                    const SizedBox(height: 12),
+                                    Container(width: 100, height: 14, decoration: BoxDecoration(color: colorScheme.onBackground.withOpacity(0.1), borderRadius: BorderRadius.circular(4))),
+                                    const SizedBox(height: 8),
+                                    Container(width: 60, height: 12, decoration: BoxDecoration(color: colorScheme.onBackground.withOpacity(0.1), borderRadius: BorderRadius.circular(4))),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                      
+                      final recentSongs = snapshot.data ?? [];
+                      if (recentSongs.isEmpty) return _buildEmptyState("Play some music to start your history!");
+
+                      return SizedBox(
+                        height: 220, 
                         child: ListView.builder(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           scrollDirection: Axis.horizontal,
-                          itemCount: 4,
-                          itemBuilder: (context, index) => Container(
-                            width: 140,
-                            margin: const EdgeInsets.symmetric(horizontal: 8),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(width: 140, height: 140, decoration: BoxDecoration(color: colorScheme.onBackground.withOpacity(0.1), borderRadius: BorderRadius.circular(12))),
-                                const SizedBox(height: 12),
-                                Container(width: 100, height: 14, decoration: BoxDecoration(color: colorScheme.onBackground.withOpacity(0.1), borderRadius: BorderRadius.circular(4))),
-                                const SizedBox(height: 8),
-                                Container(width: 60, height: 12, decoration: BoxDecoration(color: colorScheme.onBackground.withOpacity(0.1), borderRadius: BorderRadius.circular(4))),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  }
-                  
-                  final recentSongs = snapshot.data ?? [];
-                  if (recentSongs.isEmpty) return _buildEmptyState("Play some music to start your history!");
-
-                  return SizedBox(
-                    height: 220, 
-                    child: ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      scrollDirection: Axis.horizontal,
-                      itemCount: recentSongs.length,
-                      itemBuilder: (context, index) => _JumpBackInCard(
-                        key: ValueKey(recentSongs[index].id),
-                        song: recentSongs[index], 
-                        ref: ref
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 32)),
-
-            SliverToBoxAdapter(child: _buildSectionTitle('Made for you')),
-
-            SliverToBoxAdapter(
-              child: Consumer(
-                builder: (context, ref, child) {
-                  final mixesAsync = ref.watch(autoMixProvider);
-                  
-                  return mixesAsync.when(
-                    loading: () => SkeletonPulse(
-                      child: SizedBox(
-                        height: 200,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: 3,
-                          itemBuilder: (context, index) => Container(
-                            width: 240,
-                            margin: const EdgeInsets.symmetric(horizontal: 8),
-                            decoration: BoxDecoration(
-                              color: colorScheme.onBackground.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    error: (err, stack) => _buildEmptyState("Error generating mixes."),
-                    data: (mixes) {
-                      if (mixes.isEmpty) return _buildEmptyState("Tag more songs to generate custom mixes!");
-
-                      return SizedBox(
-                        height: 200,
-                        child: PageView.builder(
-                          controller: PageController(viewportFraction: 0.85),
-                          padEnds: false,
-                          itemCount: mixes.length,
-                          itemBuilder: (context, index) => Padding(
-                            padding: const EdgeInsets.only(left: 24.0, right: 8.0),
-                            child: _SmartMixCard(
-                              key: ValueKey(mixes[index].title),
-                              mix: mixes[index]
-                            ),
+                          itemCount: recentSongs.length,
+                          itemBuilder: (context, index) => _JumpBackInCard(
+                            key: ValueKey(recentSongs[index].id),
+                            song: recentSongs[index], 
+                            ref: ref
                           ),
                         ),
                       );
                     },
-                  );
-                },
-              ),
-            ),
+                  ),
+                ),
 
-            const SliverToBoxAdapter(child: SizedBox(height: 32)),
+                const SliverToBoxAdapter(child: SizedBox(height: 32)),
 
-            SliverToBoxAdapter(
-              child: StreamBuilder<LibraryStats>(
-                stream: database.songsDao.watchLibraryStats(), 
-                builder: (context, snapshot) {
-                  final stats = snapshot.data ?? const LibraryStats();
-                  final hours = (stats.totalDurationMs / (1000 * 60 * 60)).round();
+                SliverToBoxAdapter(child: _buildSectionTitle('Made for you')),
 
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 24),
-                      decoration: BoxDecoration(
-                        color: colorScheme.surface,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: colorScheme.onSurface.withOpacity(0.05)),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          _StatItem(value: stats.trackCount.toString(), label: 'TRACKS'),
-                          Container(width: 1, height: 40, color: colorScheme.onSurface.withOpacity(0.1)),
-                          _StatItem(
-                            value: stats.albumCount.toString(), 
-                            label: 'ALBUMS',
-                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AlbumsScreen())),
-                          ),
-                          Container(width: 1, height: 40, color: colorScheme.onSurface.withOpacity(0.1)),
-                          _StatItem(
-                            value: stats.artistCount.toString(), 
-                            label: 'ARTISTS',
-                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ArtistsScreen())),
-                          ),
-                          Container(width: 1, height: 40, color: colorScheme.onSurface.withOpacity(0.1)),
-                          _StatItem(value: hours.toString(), label: 'HOURS'),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 48)),
-
-            SliverToBoxAdapter(child: _buildFilterChips(context, ref)),
-            SliverToBoxAdapter(child: _buildDynamicSectionTitle(ref)),
-
-            Consumer(
-              builder: (context, ref, child) {
-                final scanState = ref.watch(scanProvider);
-                
-                if (!scanState.isComplete && !scanState.isError) {
-                  final progressValue = scanState.total > 0 
-                      ? scanState.processed / scanState.total 
-                      : null;
-
-                  return SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-                      child: Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: colorScheme.surface,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: colorScheme.primary.withOpacity(0.3)),
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              scanState.phase == ScanPhase.indexing 
-                                ? "Indexing Library..." 
-                                : "Processing Files...",
-                              style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 16),
-                            ),
-                            const SizedBox(height: 16),
-                            LinearProgressIndicator(
-                              value: progressValue,
-                              backgroundColor: colorScheme.onSurface.withOpacity(0.1),
-                              valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
-                              borderRadius: BorderRadius.circular(8),
-                              minHeight: 8,
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              "${scanState.processed} / ${scanState.total} Tracks",
-                              style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.w600),
-                            ),
-                            if (scanState.currentTitle != null) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                scanState.currentTitle!,
-                                style: TextStyle(color: colorScheme.onSurface.withOpacity(0.5), fontSize: 12),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                SliverToBoxAdapter(
+                  child: Consumer(
+                    builder: (context, ref, child) {
+                      final mixesAsync = ref.watch(autoMixProvider);
+                      
+                      return mixesAsync.when(
+                        loading: () => SkeletonPulse(
+                          child: SizedBox(
+                            height: 200,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: 3,
+                              itemBuilder: (context, index) => Container(
+                                width: 240,
+                                margin: const EdgeInsets.symmetric(horizontal: 8),
+                                decoration: BoxDecoration(
+                                  color: colorScheme.onBackground.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
                               ),
-                            ]
-                          ],
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  );
-                }
-                
-                return _buildFilteredLibrarySliver(context, ref);
-              }
-            ),
+                        error: (err, stack) => _buildEmptyState("Error generating mixes."),
+                        data: (mixes) {
+                          if (mixes.isEmpty) return _buildEmptyState("Tag more songs to generate custom mixes!");
 
-            const SliverToBoxAdapter(child: SizedBox(height: 120)),
+                          return SizedBox(
+                            height: 200,
+                            child: PageView.builder(
+                              controller: PageController(viewportFraction: 0.85),
+                              padEnds: false,
+                              itemCount: mixes.length,
+                              itemBuilder: (context, index) => Padding(
+                                padding: const EdgeInsets.only(left: 24.0, right: 8.0),
+                                child: _SmartMixCard(
+                                  key: ValueKey(mixes[index].title),
+                                  mix: mixes[index]
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+
+                const SliverToBoxAdapter(child: SizedBox(height: 32)),
+
+                SliverToBoxAdapter(
+                  child: StreamBuilder<LibraryStats>(
+                    stream: database.songsDao.watchLibraryStats(), 
+                    builder: (context, snapshot) {
+                      final stats = snapshot.data ?? const LibraryStats();
+                      final hours = (stats.totalDurationMs / (1000 * 60 * 60)).round();
+
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 24),
+                          decoration: BoxDecoration(
+                            color: colorScheme.surface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: colorScheme.onSurface.withOpacity(0.05)),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              _StatItem(value: stats.trackCount.toString(), label: 'TRACKS'),
+                              Container(width: 1, height: 40, color: colorScheme.onSurface.withOpacity(0.1)),
+                              _StatItem(
+                                value: stats.albumCount.toString(), 
+                                label: 'ALBUMS',
+                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AlbumsScreen())),
+                              ),
+                              Container(width: 1, height: 40, color: colorScheme.onSurface.withOpacity(0.1)),
+                              _StatItem(
+                                value: stats.artistCount.toString(), 
+                                label: 'ARTISTS',
+                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ArtistsScreen())),
+                              ),
+                              Container(width: 1, height: 40, color: colorScheme.onSurface.withOpacity(0.1)),
+                              _StatItem(value: hours.toString(), label: 'HOURS'),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+
+                const SliverToBoxAdapter(child: SizedBox(height: 48)),
+
+                SliverToBoxAdapter(child: _buildFilterChips(context, ref)),
+                SliverToBoxAdapter(child: _buildDynamicSectionTitle(ref)),
+
+                Consumer(
+                  builder: (context, ref, child) {
+                    if (!scanState.isComplete && !scanState.isError) {
+                      final progressValue = scanState.total > 0 
+                          ? scanState.processed / scanState.total 
+                          : null;
+
+                      return SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                          child: Container(
+                            padding: const EdgeInsets.all(24),
+                            decoration: BoxDecoration(
+                              color: colorScheme.surface,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: colorScheme.primary.withOpacity(0.3)),
+                            ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  scanState.phase == ScanPhase.indexing 
+                                    ? "Indexing Library..." 
+                                    : "Processing Files...",
+                                  style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 16),
+                                ),
+                                const SizedBox(height: 16),
+                                LinearProgressIndicator(
+                                  value: progressValue,
+                                  backgroundColor: colorScheme.onSurface.withOpacity(0.1),
+                                  valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
+                                  borderRadius: BorderRadius.circular(8),
+                                  minHeight: 8,
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  "${scanState.processed} / ${scanState.total} Tracks",
+                                  style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.w600),
+                                ),
+                                if (scanState.currentTitle != null) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    scanState.currentTitle!,
+                                    style: TextStyle(color: colorScheme.onSurface.withOpacity(0.5), fontSize: 12),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ]
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                    
+                    return _buildFilteredLibrarySliver(context, ref);
+                  }
+                ),
+
+                const SliverToBoxAdapter(child: SizedBox(height: 120)),
+              ],
+            ),
+            
+            // 🎯 THE FIX: The dynamic AnimatedBuilder perfectly anchors the scrubber
+            // to the tracks list, hiding it when you scroll back up to the top!
+            if (isSortingAZ && filteredSongs.isNotEmpty)
+              AnimatedBuilder(
+                animation: _scrollController,
+                builder: (context, child) {
+                  // Calculate absolute position of the header
+                  double headerHeight = 1120.0;
+                  if (_scrollController.hasClients && _currentTrackCount > 0) {
+                    final pos = _scrollController.position;
+                    final listHeight = _currentTrackCount * 72.0;
+                    final totalContent = pos.maxScrollExtent + pos.viewportDimension;
+                    final calc = totalContent - listHeight - 120.0;
+                    if (calc > 0) headerHeight = calc;
+                  }
+
+                  final offset = _scrollController.hasClients ? _scrollController.offset : 0.0;
+                  
+                  // This calculates the exact position of the "All Library Tracks" title on screen.
+                  // We add 60 to push the scrubber just below that text.
+                  double topPos = headerHeight - offset + 60.0;
+
+                  // 🎯 HIDE IF OFFSCREEN: If the calculated position gets pushed down 
+                  // to the bottom of your phone screen, it disappears gracefully.
+                  if (topPos > MediaQuery.of(context).size.height - 150) {
+                    return const SizedBox.shrink();
+                  }
+
+                  // 🎯 PIN TO TOP: Once you scroll down into the tracks list, 
+                  // the scrubber stops sliding up and pins itself to the screen.
+                  topPos = topPos.clamp(100.0, 9999.0);
+
+                  return Positioned(
+                    right: 2,
+                    top: topPos,
+                    bottom: 120, // Keep it from overlapping the bottom mini-player
+                    child: child!,
+                  );
+                },
+                child: AlphabetScrubber(
+                  scrollController: _scrollController,
+                  songs: filteredSongs,
+                  itemExtent: 72.0,
+                ),
+              ),
           ],
         ),
       ),
@@ -772,11 +819,57 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget _buildDynamicSectionTitle(WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
     final activeFilter = ref.watch(libraryFilterProvider);
+    final currentSort = ref.watch(sortOrderProvider);
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
-      child: Text(
-        activeFilter == 'All Tracks' ? 'All Library Tracks' : activeFilter,
-        style: TextStyle(color: colorScheme.onBackground, fontSize: 20, fontWeight: FontWeight.bold),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            activeFilter == 'All Tracks' ? 'All Library Tracks' : activeFilter,
+            style: TextStyle(color: colorScheme.onBackground, fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          
+          PopupMenuButton<SortOrder>(
+            icon: Icon(Icons.sort_rounded, color: colorScheme.primary),
+            color: colorScheme.surface,
+            tooltip: 'Sort Tracks',
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            onSelected: (SortOrder newSort) {
+              ref.read(sortOrderProvider.notifier).state = newSort;
+            },
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<SortOrder>>[
+              _buildSortMenuItem(SortOrder.newestFirst, 'Newest First', Icons.schedule, currentSort, colorScheme),
+              _buildSortMenuItem(SortOrder.oldestFirst, 'Oldest First', Icons.history, currentSort, colorScheme),
+              const PopupMenuDivider(),
+              _buildSortMenuItem(SortOrder.aToZ, 'Title (A-Z)', Icons.sort_by_alpha, currentSort, colorScheme),
+              _buildSortMenuItem(SortOrder.zToA, 'Title (Z-A)', Icons.sort_by_alpha, currentSort, colorScheme),
+              const PopupMenuDivider(),
+              _buildSortMenuItem(SortOrder.artist, 'Artist', Icons.person_outline, currentSort, colorScheme),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  PopupMenuItem<SortOrder> _buildSortMenuItem(SortOrder value, String label, IconData icon, SortOrder currentSort, ColorScheme colorScheme) {
+    final isSelected = value == currentSort;
+    return PopupMenuItem<SortOrder>(
+      value: value,
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: isSelected ? colorScheme.primary : colorScheme.onSurface.withOpacity(0.7)),
+          const SizedBox(width: 12),
+          Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? colorScheme.primary : colorScheme.onSurface,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -803,6 +896,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         if (filteredSongs.isEmpty) {
           return SliverToBoxAdapter(child: _buildEmptyState("No tracks found for this filter."));
         }
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _currentTrackCount = filteredSongs.length;
+        });
 
         return SliverFixedExtentList(
           itemExtent: 72.0,
@@ -1263,7 +1360,14 @@ class RecentlyAddedScreen extends ConsumerWidget {
           final songs = List<Song>.from(snapshot.data ?? []);
           if (songs.isEmpty) return Center(child: Text("No songs found.", style: TextStyle(color: colorScheme.onBackground.withOpacity(0.54))));
 
-          songs.sort((a, b) => (b.dateAdded ?? 0).compareTo(a.dateAdded ?? 0));
+          songs.sort((a, b) {
+            final aTime = (a.firstSeen > 0) ? a.firstSeen : (a.dateAdded ?? 0);
+            final bTime = (b.firstSeen > 0) ? b.firstSeen : (b.dateAdded ?? 0);
+            int cmp = bTime.compareTo(aTime);
+            if (cmp == 0) cmp = b.id.compareTo(a.id);
+            return cmp;
+          });
+          
           final recentSongs = songs.take(100).toList(); 
 
           return Column(
@@ -1499,4 +1603,30 @@ String _getDisplayLanguage(String? rawCode) {
     return 'UNCLASSIFIED';
   }
   return rawCode.toUpperCase();
+}
+
+class _HeaderOffsetScrollController extends ScrollController {
+  int Function()? getListLength;
+
+  @override
+  void jumpTo(double value) {
+    double dynamicHeaderOffset = 1120.0; // Fallback
+    
+    if (hasClients && getListLength != null) {
+      final int songCount = getListLength!();
+      if (songCount > 0) {
+        final pos = position;
+        final listHeight = songCount * 72.0;
+        final totalScrollableContent = pos.maxScrollExtent + pos.viewportDimension;
+        
+        final calculatedHeaderHeight = totalScrollableContent - listHeight - 120.0;
+        
+        if (calculatedHeaderHeight > 0) {
+          dynamicHeaderOffset = calculatedHeaderHeight;
+        }
+      }
+    }
+    
+    super.jumpTo(value + dynamicHeaderOffset);
+  }
 }

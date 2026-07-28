@@ -3,10 +3,20 @@
 //  AGP 8.11.1 | Kotlin 2.2.20 | compileSdk 36 | NDK 28.2.x
 // ============================================================
 
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// 🎯 NEW: Load the key.properties file securely from your Mac
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
 // ── android{} block ──────────────────────────────────────────
@@ -24,7 +34,7 @@ android {
     defaultConfig {
         applicationId = "com.soniq.music"
         minSdk        = 24
-        targetSdk     = 35
+        targetSdk     = 36 // 🎯 FIXED: Updated to 36 for Google Play 2026 compliance
         versionCode   = flutter.versionCode
         versionName   = flutter.versionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -37,21 +47,26 @@ android {
             keyAlias      = "androiddebugkey"
             keyPassword   = "android"
         }
-        
-        // This pulls your secure passwords from GitHub Actions
+       
         create("release") {
-            // 🎯 FIXED: Made path dynamic so your GitHub workflow can pass it in via KEYSTORE_PATH
-            val keystorePath = System.getenv("KEYSTORE_PATH") ?: "upload-keystore.jks"
-            storeFile = file(keystorePath)
+            // 🎯 FIXED: Prioritize local key.properties, fallback to GitHub env vars
+            val envPath = System.getenv("KEYSTORE_PATH")
+            val localPath = keystoreProperties["storeFile"]?.toString()
             
-            // 🎯 FIXED: Provide empty string fallbacks so Gradle config phase doesn't crash locally
-            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
-            keyAlias = System.getenv("KEY_ALIAS") ?: System.getenv("ALIAS") ?: ""
-            keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+            storeFile = when {
+                !envPath.isNullOrEmpty() -> file(envPath)
+                !localPath.isNullOrEmpty() -> file(localPath)
+                else -> file("upload-keystore.jks")
+            }
+           
+            storePassword = System.getenv("KEYSTORE_PASSWORD") 
+                ?: keystoreProperties["storePassword"]?.toString() ?: ""
+            keyAlias = System.getenv("KEY_ALIAS") ?: System.getenv("ALIAS") 
+                ?: keystoreProperties["keyAlias"]?.toString() ?: ""
+            keyPassword = System.getenv("KEY_PASSWORD") 
+                ?: keystoreProperties["keyPassword"]?.toString() ?: ""
         }
     }
-
-    // 🎯 REMOVED: The externalNativeBuild block has been completely nuked to stop the CMake errors.
 
     buildTypes {
         debug {
@@ -61,15 +76,16 @@ android {
             versionNameSuffix   = "-debug"
         }
         release {
-            // 🎯 FIXED: Smart Routing! 
-            // If GitHub provides a password, sign for production. 
-            // Otherwise, fall back to debug so local MacBook builds don't crash.
-            if (!System.getenv("KEYSTORE_PASSWORD").isNullOrEmpty()) {
+            // 🎯 FIXED: Force the release build to use the Release key if passwords exist!
+            val hasEnv = !System.getenv("KEYSTORE_PASSWORD").isNullOrEmpty()
+            val hasLocal = keystorePropertiesFile.exists() && !keystoreProperties["storePassword"]?.toString().isNullOrEmpty()
+            
+            if (hasEnv || hasLocal) {
                 signingConfig = signingConfigs.getByName("release")
             } else {
                 signingConfig = signingConfigs.getByName("debug")
             }
-            
+           
             manifestPlaceholders["crashlyticsEnabled"] = "true"
             isMinifyEnabled   = true
             isShrinkResources = true
@@ -120,7 +136,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.media:media:1.7.0")
 
-    // 🎯 NEW: Offline ML Kit Language ID Base Model
     implementation("com.google.mlkit:language-id:17.0.6")
 
     testImplementation("junit:junit:4.13.2")
