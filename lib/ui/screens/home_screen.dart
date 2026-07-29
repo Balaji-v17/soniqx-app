@@ -15,7 +15,6 @@ import 'package:soniq/providers/library_filter_provider.dart';
 import 'package:soniq/ui/widgets/add_to_playlist_sheet.dart';
 import 'package:soniq/ui/widgets/manual_tag_sheet.dart';
 import 'package:soniq/ui/widgets/fallback_album_art.dart';
-// 🎯 Added the Scrubber import!
 import 'package:soniq/ui/widgets/alphabet_scrubber.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,6 +28,32 @@ import 'package:soniq/ui/screens/playlist_detail_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:soniq/audio/shuffle_engine.dart';
 import 'package:soniq/audio/music_scanner.dart';
+
+// 🎯 CACHED STREAM PROVIDERS 
+final recentlyPlayedProvider = StreamProvider.autoDispose((ref) {
+  final db = ref.watch(databaseProvider);
+  return db.historyDao.watchRecentlyPlayed(limit: 10);
+});
+
+final historyFullProvider = StreamProvider.autoDispose((ref) {
+  final db = ref.watch(databaseProvider);
+  return db.historyDao.watchRecentlyPlayed(limit: 100);
+});
+
+final libraryStatsProvider = StreamProvider.autoDispose((ref) {
+  final db = ref.watch(databaseProvider);
+  return db.songsDao.watchLibraryStats();
+});
+
+final availableSongsProvider = StreamProvider.autoDispose((ref) {
+  final db = ref.watch(databaseProvider);
+  return db.songsDao.watchAllAvailable();
+});
+
+final isFavoriteProvider = StreamProvider.family.autoDispose<bool, int>((ref, songId) {
+  final db = ref.watch(databaseProvider);
+  return db.playlistsDao.watchIsFavorite(songId);
+});
 
 Future<List<MediaItem>> _buildMediaItems(List<Song> songs, {int activeIndex = 0}) async {
   if (songs.isEmpty) return [];
@@ -66,9 +91,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _isSelectionMode = false;
   final Set<int> _selectedSongIds = {};
 
-  // 🎯 Setup the custom scroll controller for the Scrubber
   final _HeaderOffsetScrollController _scrollController = _HeaderOffsetScrollController();
   int _currentTrackCount = 0;
+  
+  // 🎯 FIXED: Local state cache to prevent list shrinkage during Riverpod updates
+  List<Song> _cachedSongs = [];
 
   @override
   void initState() {
@@ -80,10 +107,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     Future.microtask(() async {
       ref.read(languageServiceProvider).runWeeklyMaintenance();
       _healSeededTracks();
-      
-      try {
-        await ref.read(languageServiceProvider).runClassificationPass();
-      } catch (_) {}
+      try { await ref.read(languageServiceProvider).runClassificationPass(); } catch (_) {}
     });
   }
 
@@ -95,31 +119,38 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Future<void> _healSeededTracks() async {
     final db = ref.read(databaseProvider);
-
     try {
       final brokenSongs = await (db.select(db.songs)
         ..where((s) => s.durationMs.isNull() | s.durationMs.equals(0))).get();
 
       if (brokenSongs.isEmpty) return;
 
-      for (var i = 0; i < brokenSongs.length; i++) {
-        final song = brokenSongs[i];
-        if (song.path.isNotEmpty) {
-          final player = AudioPlayer(); 
+      final player = AudioPlayer();
+      final List<SongsCompanion> updates = [];
+
+      for (final song in brokenSongs) {
+        if (!mounted) break;
+        if (song.path.isNotEmpty && File(song.path).existsSync()) {
           try {
-            final duration = await player.setFilePath(song.path).timeout(const Duration(seconds: 2));
+            final duration = await player.setFilePath(song.path).timeout(const Duration(milliseconds: 800));
             if (duration != null && duration.inMilliseconds > 0) {
-              await (db.update(db.songs)..where((t) => t.id.equals(song.id))).write(
-                SongsCompanion(durationMs: drift.Value(duration.inMilliseconds)),
-              );
+              updates.add(SongsCompanion(
+                id: drift.Value(song.id),
+                durationMs: drift.Value(duration.inMilliseconds),
+              ));
             }
-          } catch (_) {
-            // Silently ignore corrupted files
-          } finally {
-            await player.dispose(); 
-          }
+          } catch (_) {}
         }
-        await Future.delayed(const Duration(milliseconds: 300));
+      }
+
+      await player.dispose();
+
+      if (updates.isNotEmpty && mounted) {
+        await db.batch((batch) {
+          for (final u in updates) {
+            batch.update(db.songs, u, where: (t) => t.id.equals(u.id.value));
+          }
+        });
       }
     } catch (_) {}
   }
@@ -308,8 +339,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final scanState = ref.watch(scanProvider);
-    final filteredSongs = ref.watch(filteredSongsProvider).value ?? [];
     final isSortingAZ = ref.watch(sortOrderProvider) == SortOrder.aToZ;
+
+    // 🎯 FIXED: Populate the cache at the very top of the build lifecycle.
+    // If the StreamProvider emits a state transition, the local state retains the previous list.
+    final filteredSongsAsync = ref.watch(filteredSongsProvider);
+    if (filteredSongsAsync.hasValue) {
+      _cachedSongs = filteredSongsAsync.value!;
+    }
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -477,18 +514,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
 
                 SliverToBoxAdapter(
-                  child: StreamBuilder<List<Song>>(
-                    stream: database.historyDao.watchRecentlyPlayed(limit: 10),
-                    builder: (context, snapshot) {
-                      if (snapshot.hasError) {
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                          child: Text('Database Error:\n${snapshot.error}', style: const TextStyle(color: Colors.redAccent)),
-                        );
-                      }
-
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return SkeletonPulse(
+                  child: Consumer(
+                    builder: (context, ref, child) {
+                      final recentAsync = ref.watch(recentlyPlayedProvider);
+                      return recentAsync.when(
+                        loading: () => SkeletonPulse(
                           child: SizedBox(
                             height: 220,
                             child: ListView.builder(
@@ -511,24 +541,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               ),
                             ),
                           ),
-                        );
-                      }
-                      
-                      final recentSongs = snapshot.data ?? [];
-                      if (recentSongs.isEmpty) return _buildEmptyState("Play some music to start your history!");
-
-                      return SizedBox(
-                        height: 220, 
-                        child: ListView.builder(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          scrollDirection: Axis.horizontal,
-                          itemCount: recentSongs.length,
-                          itemBuilder: (context, index) => _JumpBackInCard(
-                            key: ValueKey(recentSongs[index].id),
-                            song: recentSongs[index], 
-                            ref: ref
-                          ),
                         ),
+                        error: (err, stack) => Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                          child: Text('Error loading history.', style: TextStyle(color: colorScheme.onBackground.withOpacity(0.54))),
+                        ),
+                        data: (recentSongs) {
+                          if (recentSongs.isEmpty) return _buildEmptyState("Play some music to start your history!");
+                          return SizedBox(
+                            height: 220, 
+                            child: ListView.builder(
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              scrollDirection: Axis.horizontal,
+                              itemCount: recentSongs.length,
+                              itemBuilder: (context, index) => _JumpBackInCard(
+                                key: ValueKey(recentSongs[index].id),
+                                song: recentSongs[index], 
+                                ref: ref
+                              ),
+                            ),
+                          );
+                        },
                       );
                     },
                   ),
@@ -589,10 +622,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 const SliverToBoxAdapter(child: SizedBox(height: 32)),
 
                 SliverToBoxAdapter(
-                  child: StreamBuilder<LibraryStats>(
-                    stream: database.songsDao.watchLibraryStats(), 
-                    builder: (context, snapshot) {
-                      final stats = snapshot.data ?? const LibraryStats();
+                  child: Consumer(
+                    builder: (context, ref, child) {
+                      final statsAsync = ref.watch(libraryStatsProvider);
+                      final stats = statsAsync.value ?? const LibraryStats();
                       final hours = (stats.totalDurationMs / (1000 * 60 * 60)).round();
 
                       return Padding(
@@ -635,75 +668,64 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 SliverToBoxAdapter(child: _buildFilterChips(context, ref)),
                 SliverToBoxAdapter(child: _buildDynamicSectionTitle(ref)),
 
-                Consumer(
-                  builder: (context, ref, child) {
-                    if (!scanState.isComplete && !scanState.isError) {
-                      final progressValue = scanState.total > 0 
-                          ? scanState.processed / scanState.total 
-                          : null;
-
-                      return SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-                          child: Container(
-                            padding: const EdgeInsets.all(24),
-                            decoration: BoxDecoration(
-                              color: colorScheme.surface,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: colorScheme.primary.withOpacity(0.3)),
-                            ),
-                            child: Column(
-                              children: [
-                                Text(
-                                  scanState.phase == ScanPhase.indexing 
-                                    ? "Indexing Library..." 
-                                    : "Processing Files...",
-                                  style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 16),
-                                ),
-                                const SizedBox(height: 16),
-                                LinearProgressIndicator(
-                                  value: progressValue,
-                                  backgroundColor: colorScheme.onSurface.withOpacity(0.1),
-                                  valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
-                                  borderRadius: BorderRadius.circular(8),
-                                  minHeight: 8,
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  "${scanState.processed} / ${scanState.total} Tracks",
-                                  style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.w600),
-                                ),
-                                if (scanState.currentTitle != null) ...[
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    scanState.currentTitle!,
-                                    style: TextStyle(color: colorScheme.onSurface.withOpacity(0.5), fontSize: 12),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ]
-                              ],
-                            ),
-                          ),
+                // 🎯 FIXED: Re-architected sliver layout to remove identity-destroying Consumer wrappers
+                if (!scanState.isComplete && !scanState.isError)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                      child: Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: colorScheme.surface,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: colorScheme.primary.withOpacity(0.3)),
                         ),
-                      );
-                    }
-                    
-                    return _buildFilteredLibrarySliver(context, ref);
-                  }
-                ),
+                        child: Column(
+                          children: [
+                            Text(
+                              scanState.phase == ScanPhase.indexing 
+                                ? "Indexing Library..." 
+                                : "Processing Files...",
+                              style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            const SizedBox(height: 16),
+                            LinearProgressIndicator(
+                              value: scanState.total > 0 ? scanState.processed / scanState.total : null,
+                              backgroundColor: colorScheme.onSurface.withOpacity(0.1),
+                              valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
+                              borderRadius: BorderRadius.circular(8),
+                              minHeight: 8,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              "${scanState.processed} / ${scanState.total} Tracks",
+                              style: TextStyle(color: colorScheme.onSurface, fontWeight: FontWeight.w600),
+                            ),
+                            if (scanState.currentTitle != null) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                scanState.currentTitle!,
+                                style: TextStyle(color: colorScheme.onSurface.withOpacity(0.5), fontSize: 12),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ]
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  _buildFilteredLibrarySliver(context, filteredSongsAsync.isLoading),
 
                 const SliverToBoxAdapter(child: SizedBox(height: 120)),
               ],
             ),
             
-            // 🎯 THE FIX: The dynamic AnimatedBuilder perfectly anchors the scrubber
-            // to the tracks list, hiding it when you scroll back up to the top!
-            if (isSortingAZ && filteredSongs.isNotEmpty)
+            if (isSortingAZ && _cachedSongs.isNotEmpty)
               AnimatedBuilder(
                 animation: _scrollController,
                 builder: (context, child) {
-                  // Calculate absolute position of the header
                   double headerHeight = 1120.0;
                   if (_scrollController.hasClients && _currentTrackCount > 0) {
                     final pos = _scrollController.position;
@@ -714,31 +736,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   }
 
                   final offset = _scrollController.hasClients ? _scrollController.offset : 0.0;
-                  
-                  // This calculates the exact position of the "All Library Tracks" title on screen.
-                  // We add 60 to push the scrubber just below that text.
                   double topPos = headerHeight - offset + 60.0;
 
-                  // 🎯 HIDE IF OFFSCREEN: If the calculated position gets pushed down 
-                  // to the bottom of your phone screen, it disappears gracefully.
                   if (topPos > MediaQuery.of(context).size.height - 150) {
                     return const SizedBox.shrink();
                   }
 
-                  // 🎯 PIN TO TOP: Once you scroll down into the tracks list, 
-                  // the scrubber stops sliding up and pins itself to the screen.
                   topPos = topPos.clamp(100.0, 9999.0);
 
                   return Positioned(
                     right: 2,
                     top: topPos,
-                    bottom: 120, // Keep it from overlapping the bottom mini-player
+                    bottom: 120,
                     child: child!,
                   );
                 },
                 child: AlphabetScrubber(
                   scrollController: _scrollController,
-                  songs: filteredSongs,
+                  songs: _cachedSongs,
                   itemExtent: 72.0,
                 ),
               ),
@@ -874,61 +889,66 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Widget _buildFilteredLibrarySliver(BuildContext context, WidgetRef ref) {
+  Widget _buildFilteredLibrarySliver(BuildContext context, bool isLoading) {
     final colorScheme = Theme.of(context).colorScheme;
-    final filteredSongsAsync = ref.watch(filteredSongsProvider);
 
-    return filteredSongsAsync.when(
-      loading: () => SliverFixedExtentList(
+    if (_cachedSongs.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _currentTrackCount = _cachedSongs.length;
+      });
+
+      return SliverFixedExtentList(
+        key: const Key('library_list_sliver_key'),
+        itemExtent: 72.0,
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            final song = _cachedSongs[index];
+            return _RecentVerticalTile(
+              key: ValueKey(song.id), 
+              song: song, 
+              ref: ref,
+              currentQueue: _cachedSongs,
+              currentIndex: index,
+              isSelectionMode: _isSelectionMode,
+              isSelected: _selectedSongIds.contains(song.id),
+              onTapOverride: _isSelectionMode ? () => _toggleSelection(song.id) : null,
+              onLongPress: () {
+                if (!_isSelectionMode) {
+                  setState(() {
+                    _isSelectionMode = true;
+                    _selectedSongIds.add(song.id);
+                  });
+                }
+              },
+            );
+          },
+          childCount: _cachedSongs.length,
+          // 🎯 FIXED: Anchors scroll position seamlessly tracking the exact visible items on screen!
+          findChildIndexCallback: (Key key) {
+            final ValueKey<int> valueKey = key as ValueKey<int>;
+            final id = valueKey.value;
+            final index = _cachedSongs.indexWhere((s) => s.id == id);
+            return index >= 0 ? index : null;
+          },
+        ),
+      );
+    }
+
+    if (isLoading) {
+      return SliverFixedExtentList(
         itemExtent: 72.0,
         delegate: SliverChildBuilderDelegate(
           (context, index) => const SkeletonSongTile(),
           childCount: 8,
         ),
-      ),
-      error: (err, stack) => SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Text('Error loading tracks.', style: TextStyle(color: colorScheme.onBackground.withOpacity(0.54))),
-        ),
-      ),
-      data: (filteredSongs) {
-        if (filteredSongs.isEmpty) {
-          return SliverToBoxAdapter(child: _buildEmptyState("No tracks found for this filter."));
-        }
+      );
+    }
 
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _currentTrackCount = filteredSongs.length;
-        });
-
-        return SliverFixedExtentList(
-          itemExtent: 72.0,
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              final song = filteredSongs[index];
-              return _RecentVerticalTile(
-                key: ValueKey(song.id), 
-                song: song, 
-                ref: ref,
-                currentQueue: filteredSongs,
-                currentIndex: index,
-                isSelectionMode: _isSelectionMode,
-                isSelected: _selectedSongIds.contains(song.id),
-                onTapOverride: _isSelectionMode ? () => _toggleSelection(song.id) : null,
-                onLongPress: () {
-                  if (!_isSelectionMode) {
-                    setState(() {
-                      _isSelectionMode = true;
-                      _selectedSongIds.add(song.id);
-                    });
-                  }
-                },
-              );
-            },
-            childCount: filteredSongs.length,
-          ),
-        );
-      },
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Text('No tracks found.', style: TextStyle(color: colorScheme.onBackground.withOpacity(0.54))),
+      ),
     );
   }
 } 
@@ -1152,7 +1172,7 @@ class _SmartMixCard extends ConsumerWidget {
   }
 }
 
-class _RecentVerticalTile extends StatelessWidget {
+class _RecentVerticalTile extends ConsumerWidget {
   final Song song;
   final WidgetRef ref;
   
@@ -1177,10 +1197,9 @@ class _RecentVerticalTile extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final db = ref.read(databaseProvider);
     final colorScheme = Theme.of(context).colorScheme;
-    
     final handler = ref.watch(audioHandlerProvider);
 
     return StreamBuilder<MediaItem?>(
@@ -1235,11 +1254,8 @@ class _RecentVerticalTile extends StatelessWidget {
           onLongPress: onLongPress,
           onTap: onTapOverride ?? () async {
             HapticFeedback.lightImpact(); 
-            
             await _recordPlayHistory(context, db, song);
-
             final queueItems = await _buildMediaItems(currentQueue, activeIndex: currentIndex);
-
             await handler.updateQueue(queueItems);
             await handler.setShuffleMode(AudioServiceShuffleMode.none);
             await handler.skipToQueueItem(currentIndex);
@@ -1263,14 +1279,13 @@ class _RecentVerticalTile extends StatelessWidget {
                   ),
                 ),
               
-              StreamBuilder<bool>(
-                stream: db.playlistsDao.watchIsFavorite(song.id),
-                builder: (context, snapshot) {
-                  final isFavorite = snapshot.data ?? false;
+              Consumer(
+                builder: (context, ref, child) {
+                  final isFav = ref.watch(isFavoriteProvider(song.id)).value ?? false;
                   return IconButton(
                     icon: Icon(
-                      isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                      color: isFavorite ? colorScheme.primary : colorScheme.onBackground.withOpacity(0.38),
+                      isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                      color: isFav ? colorScheme.primary : colorScheme.onBackground.withOpacity(0.38),
                       size: 20,
                     ),
                     onPressed: () => db.playlistsDao.toggleFavorite(song.id),
@@ -1313,13 +1328,9 @@ class RecentlyAddedScreen extends ConsumerWidget {
     final db = ref.read(databaseProvider);
     
     List<Song> playList = List.from(queue);
-    if (shuffle) {
-      playList.shuffle();
-    }
+    if (shuffle) playList.shuffle();
 
-    if (playList.isNotEmpty) {
-      await _recordPlayHistory(context, db, playList.first);
-    }
+    if (playList.isNotEmpty) await _recordPlayHistory(context, db, playList.first);
 
     final items = await _buildMediaItems(playList, activeIndex: 0);
 
@@ -1331,9 +1342,9 @@ class RecentlyAddedScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final database = ref.watch(databaseProvider);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final songsAsync = ref.watch(availableSongsProvider);
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -1343,27 +1354,23 @@ class RecentlyAddedScreen extends ConsumerWidget {
         iconTheme: IconThemeData(color: colorScheme.onBackground),
         title: Text('Recently Added', style: TextStyle(color: colorScheme.onBackground, fontWeight: FontWeight.bold)),
       ),
-      body: StreamBuilder<List<Song>>(
-        stream: database.songsDao.watchAllAvailable(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return SkeletonPulse(
-              child: ListView.builder(
-                padding: const EdgeInsets.only(bottom: 120, top: 8),
-                itemCount: 8,
-                itemExtent: 72.0,
-                itemBuilder: (context, index) => const SkeletonSongTile(),
-              ),
-            );
-          }
-          
-          final songs = List<Song>.from(snapshot.data ?? []);
+      body: songsAsync.when(
+        loading: () => SkeletonPulse(
+          child: ListView.builder(
+            padding: const EdgeInsets.only(bottom: 120, top: 8),
+            itemCount: 8,
+            itemExtent: 72.0,
+            itemBuilder: (context, index) => const SkeletonSongTile(),
+          ),
+        ),
+        error: (err, stack) => Center(child: Text("Error loading songs.", style: TextStyle(color: colorScheme.onBackground.withOpacity(0.54)))),
+        data: (rawSongs) {
+          final songs = List<Song>.from(rawSongs);
           if (songs.isEmpty) return Center(child: Text("No songs found.", style: TextStyle(color: colorScheme.onBackground.withOpacity(0.54))));
 
           songs.sort((a, b) {
-            final aTime = (a.firstSeen > 0) ? a.firstSeen : (a.dateAdded ?? 0);
-            final bTime = (b.firstSeen > 0) ? b.firstSeen : (b.dateAdded ?? 0);
-            int cmp = bTime.compareTo(aTime);
+            int cmp = (b.ctimeNs ?? 0).compareTo(a.ctimeNs ?? 0);
+            if (cmp == 0) cmp = b.firstSeen.compareTo(a.firstSeen);
             if (cmp == 0) cmp = b.id.compareTo(a.id);
             return cmp;
           });
@@ -1439,13 +1446,9 @@ class PlayHistoryScreen extends ConsumerWidget {
     final db = ref.read(databaseProvider);
     
     List<Song> playList = List.from(queue);
-    if (shuffle) {
-      playList.shuffle();
-    }
+    if (shuffle) playList.shuffle();
 
-    if (playList.isNotEmpty) {
-      await _recordPlayHistory(context, db, playList.first);
-    }
+    if (playList.isNotEmpty) await _recordPlayHistory(context, db, playList.first);
 
     final items = await _buildMediaItems(playList, activeIndex: 0);
 
@@ -1457,9 +1460,9 @@ class PlayHistoryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final database = ref.watch(databaseProvider);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final historyAsync = ref.watch(historyFullProvider);
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -1469,25 +1472,17 @@ class PlayHistoryScreen extends ConsumerWidget {
         iconTheme: IconThemeData(color: colorScheme.onBackground),
         title: Text('Listening History', style: TextStyle(color: colorScheme.onBackground, fontWeight: FontWeight.bold)),
       ),
-      body: StreamBuilder<List<Song>>(
-        stream: database.historyDao.watchRecentlyPlayed(limit: 100),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(child: Text('Database Error:\n${snapshot.error}', style: const TextStyle(color: Colors.redAccent)));
-          }
-
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return SkeletonPulse(
-              child: ListView.builder(
-                padding: const EdgeInsets.only(bottom: 120, top: 8),
-                itemCount: 8,
-                itemExtent: 72.0,
-                itemBuilder: (context, index) => const SkeletonSongTile(),
-              ),
-            );
-          }
-          
-          final historySongs = List<Song>.from(snapshot.data ?? []);
+      body: historyAsync.when(
+        loading: () => SkeletonPulse(
+          child: ListView.builder(
+            padding: const EdgeInsets.only(bottom: 120, top: 8),
+            itemCount: 8,
+            itemExtent: 72.0,
+            itemBuilder: (context, index) => const SkeletonSongTile(),
+          ),
+        ),
+        error: (err, stack) => Center(child: Text("Error loading play history.", style: TextStyle(color: colorScheme.onBackground.withOpacity(0.54)))),
+        data: (historySongs) {
           if (historySongs.isEmpty) return Center(child: Text("No play history yet.", style: TextStyle(color: colorScheme.onBackground.withOpacity(0.54))));
 
           return Column(
@@ -1610,7 +1605,7 @@ class _HeaderOffsetScrollController extends ScrollController {
 
   @override
   void jumpTo(double value) {
-    double dynamicHeaderOffset = 1120.0; // Fallback
+    double dynamicHeaderOffset = 1120.0;
     
     if (hasClients && getListLength != null) {
       final int songCount = getListLength!();

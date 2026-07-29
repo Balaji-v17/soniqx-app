@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:soniq/providers.dart';
 import 'package:soniq/database/database.dart';
 import 'package:soniq/pigeon/language_classifier.gen.dart'; 
+import 'package:soniq/classifier/title_language_detector.dart'; 
 import 'language_seed_db.dart';
 import 'language_classifier.dart' hide ClassificationResult;
 import 'seed_updater.dart'; 
@@ -18,6 +19,22 @@ import 'package:soniq/classifier/fallback_classifier.dart';
 final languageServiceProvider = Provider((ref) {
   return LanguageService(ref.watch(databaseProvider));
 });
+
+// 🎯 ISOLATE FUNCTION: Runs intensive Regex completely off the main UI thread
+Map<int, Map<String, dynamic>> runTitleDetectionIsolate(List<Map<String, dynamic>> songs) {
+  final results = <int, Map<String, dynamic>>{};
+  for (final song in songs) {
+    final res = TitleLanguageDetector.classify(song['title'] as String?);
+    if (res != null) {
+      results[song['id'] as int] = {
+        'language': res.language,
+        'confidence': res.confidence,
+        'signal': res.matchedSignal,
+      };
+    }
+  }
+  return results;
+}
 
 class LanguageService {
   final AppDatabase _db;
@@ -52,6 +69,15 @@ class LanguageService {
 
       debugPrint('🤖 Found ${unclassified.length} unclassified songs. Starting AI batch...');
 
+      // 🎯 OFFLOAD TO ISOLATE: Process all titles in a background thread instantly
+      final isolatePayload = unclassified.map((s) => {
+        'id': s.id,
+        'title': s.title ?? '',
+      }).toList();
+      
+      final patternResults = await compute(runTitleDetectionIsolate, isolatePayload);
+      debugPrint('🧩 Background Isolate matched ${patternResults.length} titles via phonetic patterns.');
+
       const chunkSize = 50;
       for (var i = 0; i < unclassified.length; i += chunkSize) {
         final end = (i + chunkSize < unclassified.length) ? i + chunkSize : unclassified.length;
@@ -68,6 +94,7 @@ class LanguageService {
         final bundle = {
           'db': databasePayload,
           'tracks': requests,
+          'patternResults': patternResults,
         };
 
         final results = await _processChunk(bundle);
@@ -206,7 +233,6 @@ class LanguageService {
     return 'und';
   }
 
-  // 🎯 NEW: Direct Lexicon mapped exactly from your screenshots
   static String? _matchEmergencyHeuristics(String title, String artist) {
     final t = title.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
     final a = artist.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
@@ -215,11 +241,13 @@ class LanguageService {
     if (t.contains('baare') || t.contains('barebare') || t.contains('neenire') ||
         t.contains('kaagadada') || t.contains('kathey') ||
         t.contains('thirboki') || t.contains('yenagali') || t.contains('heywhoa') ||
-        t.contains('lastbench') || t.contains('ogm') || t.contains('ondumaathali')) {
+        t.contains('lastbench') || t.contains('ogm') || t.contains('ondumaathali') ||
+        t.contains('tabbahi') || t.contains('tabaahi')) { 
       return 'Kannada';
     }
     if (t.contains('illuminati')) return 'Malayalam';
-    if (t.contains('tabaahi') || t.contains('suchkehrahahai') || t.contains('jeenelaga') ||
+    
+    if (t.contains('suchkehrahahai') || t.contains('jeenelaga') ||
         t.contains('donthetheme') || t.contains('khairiyat') || t.contains('sautarahke') ||
         t.contains('gehrahua') || t.contains('dhurandhar')) {
       return 'Hindi';
@@ -249,9 +277,9 @@ class LanguageService {
 
   Future<List<Map<String, dynamic>>> _processChunk(Map<String, dynamic> bundle) async {
     final rawDb = bundle['db'] as Map<dynamic, dynamic>? ?? {};
+    final patternResults = bundle['patternResults'] as Map<int, Map<String, dynamic>>? ?? {};
     final Map<String, Map<String, double>> localDb = {};
 
-    // Handles the nested 7GB DB structure
     Map<dynamic, dynamic> targetDb = rawDb;
     if (rawDb.containsKey('artists') && rawDb['artists'] is Map) {
       targetDb = rawDb['artists'] as Map;
@@ -267,7 +295,6 @@ class LanguageService {
             localDb[artistKey.toString()] = artistData.map((k, v) => MapEntry(k.toString(), (v as num).toDouble()));
           }
         } catch (e) {
-          // Skip silently
         }
       }
     });
@@ -286,11 +313,15 @@ class LanguageService {
     );
 
     for (final req in tracks) {
+      final int songId = req['id'];
       String? finalLang;
       bool manualNeeded = true;
       double finalConf = 0.0;
 
-      // 🎯 THE NEW FIX: Run Emergency Lexicon FIRST
+      final patternRes = patternResults[songId];
+      final hasScriptMatch = patternRes != null && patternRes['confidence'] >= 0.97;
+
+      // 🎯 PRIORITY 1: EMERGENCY LEXICON
       final emergencyLang = _matchEmergencyHeuristics(
         req['title']?.toString() ?? '',
         req['artist']?.toString() ?? ''
@@ -301,8 +332,16 @@ class LanguageService {
         finalConf = 0.99;
         manualNeeded = false;
         debugPrint('🛡️ Lexicon Override: Tagged ${req['title']} as $finalLang');
-      } else {
-        // ──────── TIER 1: PRIMARY METADATA NLP ────────
+      } 
+      // 🎯 PRIORITY 2: NATIVE SCRIPT (Unbeatable deterministic proof)
+      else if (hasScriptMatch) {
+        finalLang = patternRes['language'];
+        finalConf = patternRes['confidence'];
+        manualNeeded = false;
+        debugPrint('📜 Native Script: Tagged ${req['title']} as $finalLang');
+      }
+      else {
+        // 🎯 PRIORITY 3: DATABASE SEED
         final dbRes = LanguageClassifier.classify(
           title: req['title'],
           artist: req['artist'],
@@ -316,7 +355,17 @@ class LanguageService {
           manualNeeded = false;
         }
 
-        // ──────── TIER 0: ML KIT INFERENCE ────────
+        // 🎯 PRIORITY 4: PHONETIC PATTERNS (Suffixes & Keywords from Isolate)
+        if (finalLang == null || manualNeeded) {
+          if (patternRes != null) {
+            finalLang = patternRes['language'];
+            finalConf = patternRes['confidence'];
+            manualNeeded = false;
+            debugPrint('🔤 Phonetic Pattern: Tagged ${req['title']} as $finalLang via ${patternRes['signal']}');
+          }
+        }
+
+        // 🎯 PRIORITY 5: ML KIT / FASTTEXT
         if (finalLang == null || manualNeeded) {
           final titleStr = req['title']?.toString() ?? '';
           if (titleStr.isNotEmpty) {
@@ -354,7 +403,7 @@ class LanguageService {
           manualNeeded = dbRes.needsManual;
         }
 
-        // ──────── TIER 2: HEURISTIC FALLBACK ────────
+        // 🎯 PRIORITY 6: FOLDER / ALBUM FALLBACK
         if (finalLang == null || finalLang == 'und' || manualNeeded) {
           final fallbackResult = fallbackClassifier.classify(req['path']);
 

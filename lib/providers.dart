@@ -70,14 +70,16 @@ final filteredSongsProvider = Provider<AsyncValue<List<Song>>>((ref) {
     
     resultList.sort((a, b) {
       switch (sortOrder) {
-case SortOrder.newestFirst:
-          int cmp = b.ctimeNano.compareTo(a.ctimeNano);
+        case SortOrder.newestFirst:
+          // 🎯 FIXED: Updated to ctimeNs with null safety fallback
+          int cmp = (b.ctimeNs ?? 0).compareTo(a.ctimeNs ?? 0);
           if (cmp == 0) cmp = b.firstSeen.compareTo(a.firstSeen);
           if (cmp == 0) cmp = b.id.compareTo(a.id);
           return cmp;
 
         case SortOrder.oldestFirst:
-          int cmp = a.ctimeNano.compareTo(b.ctimeNano);
+          // 🎯 FIXED: Updated to ctimeNs with null safety fallback
+          int cmp = (a.ctimeNs ?? 0).compareTo(b.ctimeNs ?? 0);
           if (cmp == 0) cmp = a.firstSeen.compareTo(b.firstSeen);
           if (cmp == 0) cmp = a.id.compareTo(b.id);
           return cmp;

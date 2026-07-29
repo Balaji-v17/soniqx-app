@@ -35,8 +35,8 @@ class Songs extends Table {
   IntColumn get size => integer().withDefault(const Constant(0))();
   IntColumn get dateAdded => integer().nullable()();
   
-  // High-precision nanosecond POSIX ctime
-  IntColumn get ctimeNano => integer().withDefault(const Constant(0))();
+  // 🎯 THE FIX: High-precision nanosecond POSIX ctime (renamed to ctimeNs and made nullable)
+  IntColumn get ctimeNs => integer().nullable()();
   IntColumn get firstSeen => integer().withDefault(const Constant(0))();
 
   BoolColumn get isAvailable => boolean().withDefault(const Constant(true))();
@@ -742,7 +742,6 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
 Future<void> insertSongsBatch(dynamic rawInput) async {
-    // 🎯 THE FIX: Fetch existing durations to PREVENT the scanner from overwriting healed values with 0
     final existingDurations = <int, int>{};
     final currentSongs = await select(songs).get();
     for (final s in currentSongs) {
@@ -768,7 +767,6 @@ Future<void> insertSongsBatch(dynamic rawInput) async {
              finalAlbumId = parsedAlbum.hashCode;
           }
 
-          // 🎯 THE FIX: Keep the healed duration if MediaStore returns 0!
           int finalDuration = 0;
           final rawVal = int.tryParse(raw['duration']?.toString() ?? '') ?? 0;
           if (rawVal > 0) {
@@ -784,9 +782,10 @@ Future<void> insertSongsBatch(dynamic rawInput) async {
             album: Value(parsedAlbum), 
             path: Value(raw['data_uri']?.toString() ?? raw['path']?.toString() ?? ''), 
             albumId: Value(finalAlbumId), 
-            durationMs: Value(finalDuration), // 🎯 Use the safe duration
+            durationMs: Value(finalDuration),
             dateAdded: Value(int.tryParse(raw['dateAddedSec']?.toString() ?? '') ?? DateTime.now().millisecondsSinceEpoch),
-            ctimeNano: Value(int.tryParse(raw['ctimeNano']?.toString() ?? '0') ?? 0),
+            // 🎯 THE FIX: Correctly map the nanosecond property from Map payloads
+            ctimeNs: Value(int.tryParse(raw['ctimeNs']?.toString() ?? '')),
           );
         }).toList();
 
@@ -794,8 +793,10 @@ Future<void> insertSongsBatch(dynamic rawInput) async {
       }
     });
   }
+  
+  // 🎯 THE FIX: Bumped schema version to 4 to trigger the column addition
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -889,8 +890,9 @@ Future<void> insertSongsBatch(dynamic rawInput) async {
         await m.addColumn(songs, songs.canonicalPath);
         await m.addColumn(songs, songs.firstSeen);
       }
-      if (from < 3) {
-        await m.addColumn(songs, songs.ctimeNano);
+      if (from < 4) {
+        // 🎯 THE FIX: Safely add the new column to existing databases
+        await m.addColumn(songs, songs.ctimeNs);
       }
     },
   );

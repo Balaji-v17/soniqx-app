@@ -11,12 +11,36 @@ import android.util.Log
 import android.util.Size
 import java.io.ByteArrayOutputStream
 import android.media.MediaMetadataRetriever
+import android.system.Os
+import android.annotation.SuppressLint
 
 class AudioScannerApiImpl(private val context: Context) : AudioScannerApi {
 
     private val contentResolver = context.contentResolver
     private val tag = "AudioScanner"
     private val minDurationMs = 10_000L
+
+    // 🎯 FIXED: Correct Android POSIX struct mapping for nanoseconds
+    @SuppressLint("NewApi")
+    private fun getCtimeNanos(path: String): Long {
+        return try {
+            val stat = Os.stat(path)
+            var sec = stat.st_ctime
+            var nsec = 0L
+            
+            // Nanosecond precision is safely extracted on API 27+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                val timespec = stat.st_ctim
+                if (timespec != null) {
+                    sec = timespec.tv_sec
+                    nsec = timespec.tv_nsec
+                }
+            }
+            sec * 1_000_000_000L + nsec
+        } catch (e: Exception) {
+            0L
+        }
+    }
 
     private fun getBaseProjection(): Array<String> {
         val projection = mutableListOf(
@@ -66,7 +90,6 @@ class AudioScannerApiImpl(private val context: Context) : AudioScannerApi {
                 val songId = cursor.getLong(idCol)
                 var duration = cursor.getLong(durationCol)
                 
-                // 🎯 THE SCOPED STORAGE FIX: Use the Content URI, not the file path!
                 if (duration <= 0L) {
                     try {
                         val retriever = MediaMetadataRetriever()
@@ -112,7 +135,8 @@ class AudioScannerApiImpl(private val context: Context) : AudioScannerApi {
                     discNumber = discNumber,
                     year = year,
                     albumArtist = albumArtist,
-                    genre = genre
+                    genre = genre,
+                    ctimeNs = getCtimeNanos(path)
                 ))
             } catch (e: Exception) {
                 Log.e(tag, "Skipping malformed row: ${e.message}")

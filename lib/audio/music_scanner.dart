@@ -104,7 +104,7 @@ class MusicScanner {
                 ? existing.durationMs! 
                 : 0;
 
-        // 🎯 Instant Dart header fallback during scan
+        // Instant Dart header fallback during scan
         if (mergedDuration <= 0 && incoming.path!.isNotEmpty) {
           try {
             final parsedMs = await AudioHeaderReader.getDurationMs(incoming.path!);
@@ -135,6 +135,9 @@ class MusicScanner {
             durationMs: Value(mergedDuration),
             dateAdded: Value(incoming.dateAdded), 
             firstSeen: Value(mergedFirstSeen), 
+            
+            // 🎯 THE FIX: Pass the nanosecond Linux Kernel timestamp into SQLite
+            ctimeNs: Value(incoming.ctimeNs), 
             
             languageTag: Value(existing?.languageTag),
             classifierConfidence: Value(existing?.classifierConfidence ?? 0.0),

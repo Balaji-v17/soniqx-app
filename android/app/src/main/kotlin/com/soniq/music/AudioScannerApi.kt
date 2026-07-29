@@ -206,7 +206,8 @@ data class RawSongData (
   val durationMs: Long? = null,
   val trackNumber: Long? = null,
   val discNumber: Long? = null,
-  val year: Long? = null
+  val year: Long? = null,
+  val ctimeNs: Long? = null // 🎯 ADDED: Nanosecond timestamp for perfect sorting
 )
  {
   companion object {
@@ -224,7 +225,10 @@ data class RawSongData (
       val trackNumber = pigeonVar_list[10] as Long?
       val discNumber = pigeonVar_list[11] as Long?
       val year = pigeonVar_list[12] as Long?
-      return RawSongData(id, path, albumId, dateAdded, title, artist, album, albumArtist, genre, durationMs, trackNumber, discNumber, year)
+      // 🎯 FIXED: Safely convert standard Ints from Dart into Kotlin Longs
+      val ctimeNs = pigeonVar_list[13]?.let { if (it is Int) it.toLong() else it as Long } 
+      
+      return RawSongData(id, path, albumId, dateAdded, title, artist, album, albumArtist, genre, durationMs, trackNumber, discNumber, year, ctimeNs)
     }
   }
   fun toList(): List<Any?> {
@@ -242,6 +246,7 @@ data class RawSongData (
       trackNumber,
       discNumber,
       year,
+      ctimeNs, // 🎯 ADDED: Add to serialization list
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -252,7 +257,7 @@ data class RawSongData (
       return true
     }
     val other = other as RawSongData
-    return AudioScannerApiPigeonUtils.deepEquals(this.id, other.id) && AudioScannerApiPigeonUtils.deepEquals(this.path, other.path) && AudioScannerApiPigeonUtils.deepEquals(this.albumId, other.albumId) && AudioScannerApiPigeonUtils.deepEquals(this.dateAdded, other.dateAdded) && AudioScannerApiPigeonUtils.deepEquals(this.title, other.title) && AudioScannerApiPigeonUtils.deepEquals(this.artist, other.artist) && AudioScannerApiPigeonUtils.deepEquals(this.album, other.album) && AudioScannerApiPigeonUtils.deepEquals(this.albumArtist, other.albumArtist) && AudioScannerApiPigeonUtils.deepEquals(this.genre, other.genre) && AudioScannerApiPigeonUtils.deepEquals(this.durationMs, other.durationMs) && AudioScannerApiPigeonUtils.deepEquals(this.trackNumber, other.trackNumber) && AudioScannerApiPigeonUtils.deepEquals(this.discNumber, other.discNumber) && AudioScannerApiPigeonUtils.deepEquals(this.year, other.year)
+    return AudioScannerApiPigeonUtils.deepEquals(this.id, other.id) && AudioScannerApiPigeonUtils.deepEquals(this.path, other.path) && AudioScannerApiPigeonUtils.deepEquals(this.albumId, other.albumId) && AudioScannerApiPigeonUtils.deepEquals(this.dateAdded, other.dateAdded) && AudioScannerApiPigeonUtils.deepEquals(this.title, other.title) && AudioScannerApiPigeonUtils.deepEquals(this.artist, other.artist) && AudioScannerApiPigeonUtils.deepEquals(this.album, other.album) && AudioScannerApiPigeonUtils.deepEquals(this.albumArtist, other.albumArtist) && AudioScannerApiPigeonUtils.deepEquals(this.genre, other.genre) && AudioScannerApiPigeonUtils.deepEquals(this.durationMs, other.durationMs) && AudioScannerApiPigeonUtils.deepEquals(this.trackNumber, other.trackNumber) && AudioScannerApiPigeonUtils.deepEquals(this.discNumber, other.discNumber) && AudioScannerApiPigeonUtils.deepEquals(this.year, other.year) && AudioScannerApiPigeonUtils.deepEquals(this.ctimeNs, other.ctimeNs) // 🎯 ADDED: Deep equality check
   }
 
   override fun hashCode(): Int {
@@ -270,10 +275,11 @@ data class RawSongData (
     result = 31 * result + AudioScannerApiPigeonUtils.deepHash(this.trackNumber)
     result = 31 * result + AudioScannerApiPigeonUtils.deepHash(this.discNumber)
     result = 31 * result + AudioScannerApiPigeonUtils.deepHash(this.year)
+    result = 31 * result + AudioScannerApiPigeonUtils.deepHash(this.ctimeNs) // 🎯 ADDED: Deep hash calculation
     return result
   }
   override fun toString(): String {
-    return "RawSongData(id=$id, path=$path, albumId=$albumId, dateAdded=$dateAdded, title=$title, artist=$artist, album=$album, albumArtist=$albumArtist, genre=$genre, durationMs=$durationMs, trackNumber=$trackNumber, discNumber=$discNumber, year=$year)"
+    return "RawSongData(id=$id, path=$path, albumId=$albumId, dateAdded=$dateAdded, title=$title, artist=$artist, album=$album, albumArtist=$albumArtist, genre=$genre, durationMs=$durationMs, trackNumber=$trackNumber, discNumber=$discNumber, year=$year, ctimeNs=$ctimeNs)" // 🎯 ADDED: toString printout
   }
 }
 private open class AudioScannerApiPigeonCodec : StandardMessageCodec() {

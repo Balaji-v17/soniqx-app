@@ -256,17 +256,16 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
-  static const VerificationMeta _ctimeNanoMeta = const VerificationMeta(
-    'ctimeNano',
+  static const VerificationMeta _ctimeNsMeta = const VerificationMeta(
+    'ctimeNs',
   );
   @override
-  late final GeneratedColumn<int> ctimeNano = GeneratedColumn<int>(
-    'ctime_nano',
+  late final GeneratedColumn<int> ctimeNs = GeneratedColumn<int>(
+    'ctime_ns',
     aliasedName,
-    false,
+    true,
     type: DriftSqlType.int,
     requiredDuringInsert: false,
-    defaultValue: const Constant(0),
   );
   static const VerificationMeta _firstSeenMeta = const VerificationMeta(
     'firstSeen',
@@ -372,7 +371,7 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
     durationMs,
     size,
     dateAdded,
-    ctimeNano,
+    ctimeNs,
     firstSeen,
     isAvailable,
     languageTag,
@@ -491,10 +490,10 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
         dateAdded.isAcceptableOrUnknown(data['date_added']!, _dateAddedMeta),
       );
     }
-    if (data.containsKey('ctime_nano')) {
+    if (data.containsKey('ctime_ns')) {
       context.handle(
-        _ctimeNanoMeta,
-        ctimeNano.isAcceptableOrUnknown(data['ctime_nano']!, _ctimeNanoMeta),
+        _ctimeNsMeta,
+        ctimeNs.isAcceptableOrUnknown(data['ctime_ns']!, _ctimeNsMeta),
       );
     }
     if (data.containsKey('first_seen')) {
@@ -623,10 +622,10 @@ class $SongsTable extends Songs with TableInfo<$SongsTable, Song> {
         DriftSqlType.int,
         data['${effectivePrefix}date_added'],
       ),
-      ctimeNano: attachedDatabase.typeMapping.read(
+      ctimeNs: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
-        data['${effectivePrefix}ctime_nano'],
-      )!,
+        data['${effectivePrefix}ctime_ns'],
+      ),
       firstSeen: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}first_seen'],
@@ -680,7 +679,7 @@ class Song extends DataClass implements Insertable<Song> {
   final int durationMs;
   final int size;
   final int? dateAdded;
-  final int ctimeNano;
+  final int? ctimeNs;
   final int firstSeen;
   final bool isAvailable;
   final String? languageTag;
@@ -704,7 +703,7 @@ class Song extends DataClass implements Insertable<Song> {
     required this.durationMs,
     required this.size,
     this.dateAdded,
-    required this.ctimeNano,
+    this.ctimeNs,
     required this.firstSeen,
     required this.isAvailable,
     this.languageTag,
@@ -751,7 +750,9 @@ class Song extends DataClass implements Insertable<Song> {
     if (!nullToAbsent || dateAdded != null) {
       map['date_added'] = Variable<int>(dateAdded);
     }
-    map['ctime_nano'] = Variable<int>(ctimeNano);
+    if (!nullToAbsent || ctimeNs != null) {
+      map['ctime_ns'] = Variable<int>(ctimeNs);
+    }
     map['first_seen'] = Variable<int>(firstSeen);
     map['is_available'] = Variable<bool>(isAvailable);
     if (!nullToAbsent || languageTag != null) {
@@ -803,7 +804,9 @@ class Song extends DataClass implements Insertable<Song> {
       dateAdded: dateAdded == null && nullToAbsent
           ? const Value.absent()
           : Value(dateAdded),
-      ctimeNano: Value(ctimeNano),
+      ctimeNs: ctimeNs == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ctimeNs),
       firstSeen: Value(firstSeen),
       isAvailable: Value(isAvailable),
       languageTag: languageTag == null && nullToAbsent
@@ -841,7 +844,7 @@ class Song extends DataClass implements Insertable<Song> {
       durationMs: serializer.fromJson<int>(json['durationMs']),
       size: serializer.fromJson<int>(json['size']),
       dateAdded: serializer.fromJson<int?>(json['dateAdded']),
-      ctimeNano: serializer.fromJson<int>(json['ctimeNano']),
+      ctimeNs: serializer.fromJson<int?>(json['ctimeNs']),
       firstSeen: serializer.fromJson<int>(json['firstSeen']),
       isAvailable: serializer.fromJson<bool>(json['isAvailable']),
       languageTag: serializer.fromJson<String?>(json['languageTag']),
@@ -872,7 +875,7 @@ class Song extends DataClass implements Insertable<Song> {
       'durationMs': serializer.toJson<int>(durationMs),
       'size': serializer.toJson<int>(size),
       'dateAdded': serializer.toJson<int?>(dateAdded),
-      'ctimeNano': serializer.toJson<int>(ctimeNano),
+      'ctimeNs': serializer.toJson<int?>(ctimeNs),
       'firstSeen': serializer.toJson<int>(firstSeen),
       'isAvailable': serializer.toJson<bool>(isAvailable),
       'languageTag': serializer.toJson<String?>(languageTag),
@@ -899,7 +902,7 @@ class Song extends DataClass implements Insertable<Song> {
     int? durationMs,
     int? size,
     Value<int?> dateAdded = const Value.absent(),
-    int? ctimeNano,
+    Value<int?> ctimeNs = const Value.absent(),
     int? firstSeen,
     bool? isAvailable,
     Value<String?> languageTag = const Value.absent(),
@@ -923,7 +926,7 @@ class Song extends DataClass implements Insertable<Song> {
     durationMs: durationMs ?? this.durationMs,
     size: size ?? this.size,
     dateAdded: dateAdded.present ? dateAdded.value : this.dateAdded,
-    ctimeNano: ctimeNano ?? this.ctimeNano,
+    ctimeNs: ctimeNs.present ? ctimeNs.value : this.ctimeNs,
     firstSeen: firstSeen ?? this.firstSeen,
     isAvailable: isAvailable ?? this.isAvailable,
     languageTag: languageTag.present ? languageTag.value : this.languageTag,
@@ -959,7 +962,7 @@ class Song extends DataClass implements Insertable<Song> {
           : this.durationMs,
       size: data.size.present ? data.size.value : this.size,
       dateAdded: data.dateAdded.present ? data.dateAdded.value : this.dateAdded,
-      ctimeNano: data.ctimeNano.present ? data.ctimeNano.value : this.ctimeNano,
+      ctimeNs: data.ctimeNs.present ? data.ctimeNs.value : this.ctimeNs,
       firstSeen: data.firstSeen.present ? data.firstSeen.value : this.firstSeen,
       isAvailable: data.isAvailable.present
           ? data.isAvailable.value
@@ -998,7 +1001,7 @@ class Song extends DataClass implements Insertable<Song> {
           ..write('durationMs: $durationMs, ')
           ..write('size: $size, ')
           ..write('dateAdded: $dateAdded, ')
-          ..write('ctimeNano: $ctimeNano, ')
+          ..write('ctimeNs: $ctimeNs, ')
           ..write('firstSeen: $firstSeen, ')
           ..write('isAvailable: $isAvailable, ')
           ..write('languageTag: $languageTag, ')
@@ -1027,7 +1030,7 @@ class Song extends DataClass implements Insertable<Song> {
     durationMs,
     size,
     dateAdded,
-    ctimeNano,
+    ctimeNs,
     firstSeen,
     isAvailable,
     languageTag,
@@ -1055,7 +1058,7 @@ class Song extends DataClass implements Insertable<Song> {
           other.durationMs == this.durationMs &&
           other.size == this.size &&
           other.dateAdded == this.dateAdded &&
-          other.ctimeNano == this.ctimeNano &&
+          other.ctimeNs == this.ctimeNs &&
           other.firstSeen == this.firstSeen &&
           other.isAvailable == this.isAvailable &&
           other.languageTag == this.languageTag &&
@@ -1081,7 +1084,7 @@ class SongsCompanion extends UpdateCompanion<Song> {
   final Value<int> durationMs;
   final Value<int> size;
   final Value<int?> dateAdded;
-  final Value<int> ctimeNano;
+  final Value<int?> ctimeNs;
   final Value<int> firstSeen;
   final Value<bool> isAvailable;
   final Value<String?> languageTag;
@@ -1105,7 +1108,7 @@ class SongsCompanion extends UpdateCompanion<Song> {
     this.durationMs = const Value.absent(),
     this.size = const Value.absent(),
     this.dateAdded = const Value.absent(),
-    this.ctimeNano = const Value.absent(),
+    this.ctimeNs = const Value.absent(),
     this.firstSeen = const Value.absent(),
     this.isAvailable = const Value.absent(),
     this.languageTag = const Value.absent(),
@@ -1130,7 +1133,7 @@ class SongsCompanion extends UpdateCompanion<Song> {
     this.durationMs = const Value.absent(),
     this.size = const Value.absent(),
     this.dateAdded = const Value.absent(),
-    this.ctimeNano = const Value.absent(),
+    this.ctimeNs = const Value.absent(),
     this.firstSeen = const Value.absent(),
     this.isAvailable = const Value.absent(),
     this.languageTag = const Value.absent(),
@@ -1155,7 +1158,7 @@ class SongsCompanion extends UpdateCompanion<Song> {
     Expression<int>? durationMs,
     Expression<int>? size,
     Expression<int>? dateAdded,
-    Expression<int>? ctimeNano,
+    Expression<int>? ctimeNs,
     Expression<int>? firstSeen,
     Expression<bool>? isAvailable,
     Expression<String>? languageTag,
@@ -1180,7 +1183,7 @@ class SongsCompanion extends UpdateCompanion<Song> {
       if (durationMs != null) 'duration_ms': durationMs,
       if (size != null) 'size': size,
       if (dateAdded != null) 'date_added': dateAdded,
-      if (ctimeNano != null) 'ctime_nano': ctimeNano,
+      if (ctimeNs != null) 'ctime_ns': ctimeNs,
       if (firstSeen != null) 'first_seen': firstSeen,
       if (isAvailable != null) 'is_available': isAvailable,
       if (languageTag != null) 'language_tag': languageTag,
@@ -1208,7 +1211,7 @@ class SongsCompanion extends UpdateCompanion<Song> {
     Value<int>? durationMs,
     Value<int>? size,
     Value<int?>? dateAdded,
-    Value<int>? ctimeNano,
+    Value<int?>? ctimeNs,
     Value<int>? firstSeen,
     Value<bool>? isAvailable,
     Value<String?>? languageTag,
@@ -1233,7 +1236,7 @@ class SongsCompanion extends UpdateCompanion<Song> {
       durationMs: durationMs ?? this.durationMs,
       size: size ?? this.size,
       dateAdded: dateAdded ?? this.dateAdded,
-      ctimeNano: ctimeNano ?? this.ctimeNano,
+      ctimeNs: ctimeNs ?? this.ctimeNs,
       firstSeen: firstSeen ?? this.firstSeen,
       isAvailable: isAvailable ?? this.isAvailable,
       languageTag: languageTag ?? this.languageTag,
@@ -1292,8 +1295,8 @@ class SongsCompanion extends UpdateCompanion<Song> {
     if (dateAdded.present) {
       map['date_added'] = Variable<int>(dateAdded.value);
     }
-    if (ctimeNano.present) {
-      map['ctime_nano'] = Variable<int>(ctimeNano.value);
+    if (ctimeNs.present) {
+      map['ctime_ns'] = Variable<int>(ctimeNs.value);
     }
     if (firstSeen.present) {
       map['first_seen'] = Variable<int>(firstSeen.value);
@@ -1339,7 +1342,7 @@ class SongsCompanion extends UpdateCompanion<Song> {
           ..write('durationMs: $durationMs, ')
           ..write('size: $size, ')
           ..write('dateAdded: $dateAdded, ')
-          ..write('ctimeNano: $ctimeNano, ')
+          ..write('ctimeNs: $ctimeNs, ')
           ..write('firstSeen: $firstSeen, ')
           ..write('isAvailable: $isAvailable, ')
           ..write('languageTag: $languageTag, ')
@@ -4653,7 +4656,7 @@ typedef $$SongsTableCreateCompanionBuilder =
       Value<int> durationMs,
       Value<int> size,
       Value<int?> dateAdded,
-      Value<int> ctimeNano,
+      Value<int?> ctimeNs,
       Value<int> firstSeen,
       Value<bool> isAvailable,
       Value<String?> languageTag,
@@ -4679,7 +4682,7 @@ typedef $$SongsTableUpdateCompanionBuilder =
       Value<int> durationMs,
       Value<int> size,
       Value<int?> dateAdded,
-      Value<int> ctimeNano,
+      Value<int?> ctimeNs,
       Value<int> firstSeen,
       Value<bool> isAvailable,
       Value<String?> languageTag,
@@ -4833,8 +4836,8 @@ class $$SongsTableFilterComposer extends Composer<_$AppDatabase, $SongsTable> {
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<int> get ctimeNano => $composableBuilder(
-    column: $table.ctimeNano,
+  ColumnFilters<int> get ctimeNs => $composableBuilder(
+    column: $table.ctimeNs,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5033,8 +5036,8 @@ class $$SongsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<int> get ctimeNano => $composableBuilder(
-    column: $table.ctimeNano,
+  ColumnOrderings<int> get ctimeNs => $composableBuilder(
+    column: $table.ctimeNs,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -5138,8 +5141,8 @@ class $$SongsTableAnnotationComposer
   GeneratedColumn<int> get dateAdded =>
       $composableBuilder(column: $table.dateAdded, builder: (column) => column);
 
-  GeneratedColumn<int> get ctimeNano =>
-      $composableBuilder(column: $table.ctimeNano, builder: (column) => column);
+  GeneratedColumn<int> get ctimeNs =>
+      $composableBuilder(column: $table.ctimeNs, builder: (column) => column);
 
   GeneratedColumn<int> get firstSeen =>
       $composableBuilder(column: $table.firstSeen, builder: (column) => column);
@@ -5295,7 +5298,7 @@ class $$SongsTableTableManager
                 Value<int> durationMs = const Value.absent(),
                 Value<int> size = const Value.absent(),
                 Value<int?> dateAdded = const Value.absent(),
-                Value<int> ctimeNano = const Value.absent(),
+                Value<int?> ctimeNs = const Value.absent(),
                 Value<int> firstSeen = const Value.absent(),
                 Value<bool> isAvailable = const Value.absent(),
                 Value<String?> languageTag = const Value.absent(),
@@ -5319,7 +5322,7 @@ class $$SongsTableTableManager
                 durationMs: durationMs,
                 size: size,
                 dateAdded: dateAdded,
-                ctimeNano: ctimeNano,
+                ctimeNs: ctimeNs,
                 firstSeen: firstSeen,
                 isAvailable: isAvailable,
                 languageTag: languageTag,
@@ -5345,7 +5348,7 @@ class $$SongsTableTableManager
                 Value<int> durationMs = const Value.absent(),
                 Value<int> size = const Value.absent(),
                 Value<int?> dateAdded = const Value.absent(),
-                Value<int> ctimeNano = const Value.absent(),
+                Value<int?> ctimeNs = const Value.absent(),
                 Value<int> firstSeen = const Value.absent(),
                 Value<bool> isAvailable = const Value.absent(),
                 Value<String?> languageTag = const Value.absent(),
@@ -5369,7 +5372,7 @@ class $$SongsTableTableManager
                 durationMs: durationMs,
                 size: size,
                 dateAdded: dateAdded,
-                ctimeNano: ctimeNano,
+                ctimeNs: ctimeNs,
                 firstSeen: firstSeen,
                 isAvailable: isAvailable,
                 languageTag: languageTag,

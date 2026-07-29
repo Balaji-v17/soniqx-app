@@ -96,7 +96,6 @@ int _deepHash(Object? value) {
   return value.hashCode;
 }
 
-
 class RawSongData {
   RawSongData({
     this.id,
@@ -112,33 +111,23 @@ class RawSongData {
     this.trackNumber,
     this.discNumber,
     this.year,
+    this.ctimeNs, // 🎯 ADDED: Nanosecond timestamp
   });
 
   int? id;
-
   String? path;
-
   int? albumId;
-
   int? dateAdded;
-
   String? title;
-
   String? artist;
-
   String? album;
-
   String? albumArtist;
-
   String? genre;
-
   int? durationMs;
-
   int? trackNumber;
-
   int? discNumber;
-
   int? year;
+  int? ctimeNs; // 🎯 ADDED: Nanosecond timestamp field
 
   List<Object?> _toList() {
     return <Object?>[
@@ -155,11 +144,13 @@ class RawSongData {
       trackNumber,
       discNumber,
       year,
+      ctimeNs, // 🎯 ADDED: Serialize to List
     ];
   }
 
   Object encode() {
-    return _toList();  }
+    return _toList();  
+  }
 
   static RawSongData decode(Object result) {
     result as List<Object?>;
@@ -177,6 +168,7 @@ class RawSongData {
       trackNumber: result[10] as int?,
       discNumber: result[11] as int?,
       year: result[12] as int?,
+      ctimeNs: result[13] as int?, // 🎯 ADDED: Deserialize from List
     );
   }
 
@@ -189,7 +181,20 @@ class RawSongData {
     if (identical(this, other)) {
       return true;
     }
-    return _deepEquals(id, other.id) && _deepEquals(path, other.path) && _deepEquals(albumId, other.albumId) && _deepEquals(dateAdded, other.dateAdded) && _deepEquals(title, other.title) && _deepEquals(artist, other.artist) && _deepEquals(album, other.album) && _deepEquals(albumArtist, other.albumArtist) && _deepEquals(genre, other.genre) && _deepEquals(durationMs, other.durationMs) && _deepEquals(trackNumber, other.trackNumber) && _deepEquals(discNumber, other.discNumber) && _deepEquals(year, other.year);
+    return _deepEquals(id, other.id) && 
+           _deepEquals(path, other.path) && 
+           _deepEquals(albumId, other.albumId) && 
+           _deepEquals(dateAdded, other.dateAdded) && 
+           _deepEquals(title, other.title) && 
+           _deepEquals(artist, other.artist) && 
+           _deepEquals(album, other.album) && 
+           _deepEquals(albumArtist, other.albumArtist) && 
+           _deepEquals(genre, other.genre) && 
+           _deepEquals(durationMs, other.durationMs) && 
+           _deepEquals(trackNumber, other.trackNumber) && 
+           _deepEquals(discNumber, other.discNumber) && 
+           _deepEquals(year, other.year) &&
+           _deepEquals(ctimeNs, other.ctimeNs); // 🎯 ADDED: Equality check
   }
 
   @override
@@ -198,10 +203,9 @@ class RawSongData {
 
   @override
   String toString() {
-    return 'RawSongData(id: $id, path: $path, albumId: $albumId, dateAdded: $dateAdded, title: $title, artist: $artist, album: $album, albumArtist: $albumArtist, genre: $genre, durationMs: $durationMs, trackNumber: $trackNumber, discNumber: $discNumber, year: $year)';
+    return 'RawSongData(id: $id, path: $path, albumId: $albumId, dateAdded: $dateAdded, title: $title, artist: $artist, album: $album, albumArtist: $albumArtist, genre: $genre, durationMs: $durationMs, trackNumber: $trackNumber, discNumber: $discNumber, year: $year, ctimeNs: $ctimeNs)'; // 🎯 ADDED: toString output
   }
 }
-
 
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
@@ -256,8 +260,7 @@ class AudioScannerApi {
         pigeonVar_replyList,
         pigeonVar_channelName,
         isNullValid: true,
-    )
-    ;
+    );
     return (pigeonVar_replyValue as List<Object?>?)?.cast<RawSongData?>();
   }
 
@@ -275,8 +278,7 @@ class AudioScannerApi {
         pigeonVar_replyList,
         pigeonVar_channelName,
         isNullValid: true,
-    )
-    ;
+    );
     return (pigeonVar_replyValue as List<Object?>?)?.cast<RawSongData?>();
   }
 
@@ -294,8 +296,7 @@ class AudioScannerApi {
         pigeonVar_replyList,
         pigeonVar_channelName,
         isNullValid: true,
-    )
-    ;
+    );
     return pigeonVar_replyValue as Uint8List?;
   }
 }
