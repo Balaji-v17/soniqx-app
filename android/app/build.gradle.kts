@@ -81,14 +81,15 @@ android {
         }
 
         getByName("release") {
-            val releaseConfig = signingConfigs.getByName("release")
+            val releaseConf = signingConfigs.getByName("release")
+            val debugConf = signingConfigs.getByName("debug")
             
-            // Safely apply the release configuration only if the storeFile was verified and attached
-            if (releaseConfig.storeFile != null && releaseConfig.storeFile!!.exists()) {
-                signingConfig = releaseConfig
-            } else {
-                // Graceful fallback to the debug signature to prevent CI execution failures
-                signingConfig = signingConfigs.getByName("debug")
+            // 🎯 FIXED: Cascade fallback for CI environments. 
+            // 1. Try Release Key. 2. Try Debug Key. 3. Build Unsigned.
+            signingConfig = when {
+                releaseConf.storeFile?.exists() == true -> releaseConf
+                debugConf.storeFile?.exists() == true -> debugConf
+                else -> null 
             }
            
             manifestPlaceholders["crashlyticsEnabled"] = "true"
