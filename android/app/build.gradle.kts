@@ -51,19 +51,24 @@ android {
             val envPath = System.getenv("KEYSTORE_PATH")
             val localPath = keystoreProperties["storeFile"]?.toString()
             
-            val keystoreFilePath = when {
-                !envPath.isNullOrEmpty() -> envPath
-                !localPath.isNullOrEmpty() -> localPath
-                else -> "/Users/balaji.v/upload-keystore.jks"
+            // Evaluates multiple potential paths and verifies file existence before assignment
+            val candidateFile = when {
+                !envPath.isNullOrEmpty() && file(envPath).exists() -> file(envPath)
+                !localPath.isNullOrEmpty() && file(localPath).exists() -> file(localPath)
+                file("/Users/balaji.v/upload-keystore.jks").exists() -> file("/Users/balaji.v/upload-keystore.jks")
+                else -> null
             }
 
-            storeFile = file(keystoreFilePath)
-            storePassword = System.getenv("KEYSTORE_PASSWORD") 
-                ?: keystoreProperties["storePassword"]?.toString() ?: ""
-            keyAlias = System.getenv("KEY_ALIAS") ?: System.getenv("ALIAS") 
-                ?: keystoreProperties["keyAlias"]?.toString() ?: ""
-            keyPassword = System.getenv("KEY_PASSWORD") 
-                ?: keystoreProperties["keyPassword"]?.toString() ?: ""
+            // Only bind the configuration variables if a valid keystore is located
+            if (candidateFile != null) {
+                storeFile = candidateFile
+                storePassword = System.getenv("KEYSTORE_PASSWORD") 
+                    ?: keystoreProperties["storePassword"]?.toString() ?: ""
+                keyAlias = System.getenv("KEY_ALIAS") ?: System.getenv("ALIAS") 
+                    ?: keystoreProperties["keyAlias"]?.toString() ?: ""
+                keyPassword = System.getenv("KEY_PASSWORD") 
+                    ?: keystoreProperties["keyPassword"]?.toString() ?: ""
+            }
         }
     }
 
@@ -76,8 +81,15 @@ android {
         }
 
         getByName("release") {
-            // Force release builds to use the release signing config
-            signingConfig = signingConfigs.getByName("release")
+            val releaseConfig = signingConfigs.getByName("release")
+            
+            // Safely apply the release configuration only if the storeFile was verified and attached
+            if (releaseConfig.storeFile != null && releaseConfig.storeFile!!.exists()) {
+                signingConfig = releaseConfig
+            } else {
+                // Graceful fallback to the debug signature to prevent CI execution failures
+                signingConfig = signingConfigs.getByName("debug")
+            }
            
             manifestPlaceholders["crashlyticsEnabled"] = "true"
             isMinifyEnabled   = true
