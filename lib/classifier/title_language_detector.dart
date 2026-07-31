@@ -8,7 +8,7 @@
 class TitleDetectionResult {
   final String language;
   final double confidence;
-  final String matchedSignal; // 'script', 'suffix', 'keyword'
+  final String matchedSignal; // 'script', 'phrase', 'keyword', 'hex'
   final String matchedPattern;
 
   const TitleDetectionResult({
@@ -26,20 +26,50 @@ class TitleDetectionResult {
 
 class TitleLanguageDetector {
   // ── 1. Download Junk Stripper ──────────────────────────────────────────────
+  // 🎯 ADDED: reprise, version, unplugged, mashup, short, cover
   static final RegExp _downloadNoiseRegex = RegExp(
-    r'(\[.*?\]|\(.*?\)|8k|4k|hd|320kbps|128kbps|mp3|official|video|lyrical|song|full|status|whatsapp|pagalworld|masstamilan|naasongs|sensongs|isaimini|vidmate|download|audio|remix|mix|cover)',
+    r'(\[.*?\]|\(.*?\)|8k|4k|hd|320kbps|128kbps|mp3|official|video|lyrical|song|full|status|whatsapp|pagalworld|masstamilan|naasongs|sensongs|isaimini|vidmate|download|audio|remix|mix|cover|reprise|version|unplugged|mashup|short)',
     caseSensitive: false,
   );
 
   static String cleanTitle(String rawTitle) {
-    return rawTitle
+    String decodedTitle = rawTitle;
+    
+    try {
+      decodedTitle = Uri.decodeFull(rawTitle);
+    } catch (_) {
+      // Fallback to original if decoding fails due to corruption
+    }
+
+    return decodedTitle
         .replaceAll(_downloadNoiseRegex, ' ')
         .replaceAll(RegExp(r'[-_.]'), ' ')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
   }
 
-  // ── 2. Native Script Recognition (Confidence: 0.97) ────────────────────────
+  // ── 2. Raw Hexadecimal Script Detector (For Corrupted VidMate URLs) ────────
+  static TitleDetectionResult? _detectRawHex(String rawTitle) {
+    final upper = rawTitle.toUpperCase();
+    if (upper.contains('%E0%A4') || upper.contains('%E0%A5')) {
+      return const TitleDetectionResult(language: 'Hindi', confidence: 0.99, matchedSignal: 'hex', matchedPattern: 'Devanagari');
+    }
+    if (upper.contains('%E0%AE') || upper.contains('%E0%AF')) {
+      return const TitleDetectionResult(language: 'Tamil', confidence: 0.99, matchedSignal: 'hex', matchedPattern: 'Tamil');
+    }
+    if (upper.contains('%E0%B0') || upper.contains('%E0%B1')) {
+      return const TitleDetectionResult(language: 'Telugu', confidence: 0.99, matchedSignal: 'hex', matchedPattern: 'Telugu');
+    }
+    if (upper.contains('%E0%B2') || upper.contains('%E0%B3')) {
+      return const TitleDetectionResult(language: 'Kannada', confidence: 0.99, matchedSignal: 'hex', matchedPattern: 'Kannada');
+    }
+    if (upper.contains('%E0%B4') || upper.contains('%E0%B5')) {
+      return const TitleDetectionResult(language: 'Malayalam', confidence: 0.99, matchedSignal: 'hex', matchedPattern: 'Malayalam');
+    }
+    return null;
+  }
+
+  // ── 3. Native Script Recognition (Confidence: 0.97) ────────────────────────
   static const Map<String, List<List<int>>> _scriptRanges = {
     'Kannada':   [[0x0C80, 0x0CFF]],
     'Tamil':     [[0x0B80, 0x0BFF]],
@@ -48,6 +78,7 @@ class TitleLanguageDetector {
     'Hindi':     [[0x0900, 0x097F]],
     'Punjabi':   [[0x0A00, 0x0A7F]],
     'Bengali':   [[0x0980, 0x09FF]],
+    // Explicitly removed Japanese and Russian ranges so they fall to 'Unclassified'
   };
 
   static TitleDetectionResult? _detectScript(String title) {
@@ -69,51 +100,99 @@ class TitleLanguageDetector {
     return null;
   }
 
-  // ── 3. High-Speed Phonetic Suffix Engine (Confidence: 0.85) ───────────────
-  static final Map<String, RegExp> _groupedSuffixPatterns = {
-    // 🎯 FIXED: Added denu and adenu to perfectly catch Thanmayaladenu and Paravashanadenu
-    'Kannada': RegExp(
-      r'\b[a-z]*(nalli|alli|inda|agide|bekilla|odeya|appa|anthe|odhu|idhe|idhu|aagide|thaane|aagi|illa|allave|helu|nodu|baro|hange|hinge|yaake|aase|jothe|yalli|denu|adenu)\b',
-      caseSensitive: false,
-    ),
-    'Tamil': RegExp(
-      r'\b[a-z]*(kaadhal|ngale|kudhu|vaazh|enidhu|thaan|aala|laam|iyya|aachu|irukku|poren|varen|vaanga|machan|chellam|azhagu|vizhi|uyir|kaatru|mazhai|poove|pookkal|illai|endru|aanal|aagum)\b',
-      caseSensitive: false,
-    ),
-    'Telugu': RegExp(
-      r'\b[a-z]*(ante|okka|undi|leru|thundhi|nundi|andi|aaru|indi|inchi|istam|ledu|ledha|thoti|kante|gurinchi|kosam|varaku|daka|aite|aina|cheppu|leni|unnadi)\b',
-      caseSensitive: false,
-    ),
-    'Malayalam': RegExp(
-      r'\b[a-z]*(njaan|kkund|undo|enne|ille|aane|aanu|ulla|thil|ente|ninte|avante|avalude|koode|oppam|mazha|unni|kutty|chechi|chettan|aayi|ittu|kond|aanenkil|enkil)\b',
-      caseSensitive: false,
-    ),
-    'Hindi': RegExp(
-      r'\b[a-z]*(wala|wali|wale|zindagi|humara|tumhara|deewana|deewani|sajna|sajni|saajan|dilwale|yaara|pyaar|mohabbat|ishq|aankhen|baatein|yaadein|raatein|bahara|khwabon|armaan|sapnon|nasha|deewangi|awaara|dilbar|dilruba|sanam)\b',
-      caseSensitive: false,
-    ),
-    'Punjabi': RegExp(
-      r'\b[a-z]*(jatt|gabru|mutiyar|viah|pind|dhol|dholna|soniye|heeriye|mahiya|sajjna|raanjha|heer|mirza|sohni|channa|taare|akhan|naina|nachdi|gidha|bhangra|boliyan|putt|kudi|munda|jawani|rangla)\b',
-      caseSensitive: false,
-    ),
+  // ── 4. EXACT PHRASE MATCHER (Confidence: 0.95) ─────────────────────────────
+  // 🎯 ADDED: This bypasses single-word collisions and locks specific songs instantly
+  static final Map<String, String> _phraseMatches = {
+    'suraj': 'Kannada', // Master override for all Suraj KM remixes
+    'aaseya bhaava': 'Kannada',
+    'aaseya bhhava': 'Kannada',
+    'naliva gulabi': 'Kannada',
+    'naliva gulaabi': 'Kannada',
+    'naliva gulabbi': 'Kannada',
+    'yaava mohana': 'Kannada',
+    'ide naadu': 'Kannada',
+    'telephone gelathi': 'Kannada',
+    'usire usire': 'Kannada',
+    'adey bhoomi': 'Kannada',
+    'ninnindale': 'Kannada',
+    'aakaasha deepavu': 'Kannada',
+    'ninade nenapu': 'Kannada',
+    'bhale bhale': 'Kannada',
+    'enendu hesaridali': 'Kannada',
+    'karavli': 'Kannada',
+    'karavali': 'Kannada',
+    'dadda': 'Kannada',
+    'aitalakadi': 'Kannada',
+    'bheema bad boys': 'Kannada',
+    'jackie shiva antha': 'Kannada',
+    'gaja movie': 'Kannada',
+    'yaar yaar jeevana': 'Kannada',
+    'kenchalo': 'Kannada',
+    'manchalo': 'Kannada',
+    'ninnanne': 'Kannada',
+    'ninnane': 'Kannada',
+    'drama chandutiya': 'Kannada',
+    'chandutiya pakadalli': 'Kannada',
+    'love aagoythe': 'Kannada',
+    'nannavale': 'Kannada',
+    'kolle nannanne': 'Kannada',
+    'omme baro': 'Kannada',
+    'o baby once again': 'Kannada',
+    'nooraru bannagalu': 'Kannada',
+    'dwapara': 'Kannada',
+    'kaadadeye': 'Kannada',
+    'chinnamma': 'Kannada',
+    'onde samane': 'Kannada',
+    'tara tara': 'Kannada',
+    'jagave neenu': 'Kannada',
+    'radhe radhe': 'Kannada',
+    'jeeva jeeva': 'Kannada',
+    'ulidavaru kandante': 'Kannada',
+    'muusanje veleli': 'Kannada',
+    'onde usiranthe': 'Kannada',
+    'college kumara': 'Kannada',
+    'kissige': 'Kannada',
+    'mehabooba mehabooba': 'Kannada',
+    'o gulabiye': 'Kannada',
+    'helbide': 'Kannada',
+    'yenammi': 'Kannada',
+    'nooraaru hrudayagalu': 'Kannada',
+    'yaarige yaru': 'Kannada',
+    'preethisuve': 'Kannada',
+    'bhajarangi': 'Kannada',
+    'bajarangi': 'Kannada',
+    'yaru yaru': 'Kannada',
+    'marethuhoyithe': 'Kannada',
+    'i am villain': 'Kannada',
+    'neene modaalu': 'Kannada',
+    'the villain': 'Kannada',
+    'rana rana': 'Kannada',
+    'lucky baskar': 'Telugu',
+    'srimathi garu': 'Telugu',
+    'joome jo pathaan': 'Hindi',
+    'besharam rang': 'Hindi',
+    'mast maga': 'Hindi',
+    'mast magan': 'Hindi',
+    'tose naina': 'Hindi',
+    'jhumritalaiyya': 'Hindi'
   };
 
-  static TitleDetectionResult? _detectSuffix(String title) {
-    for (final entry in _groupedSuffixPatterns.entries) {
-      final match = entry.value.firstMatch(title);
-      if (match != null) {
+  static TitleDetectionResult? _detectPhrase(String cleanedTitle) {
+    final lower = cleanedTitle.toLowerCase();
+    for (final entry in _phraseMatches.entries) {
+      if (lower.contains(entry.key)) {
         return TitleDetectionResult(
-          language:       entry.key,
-          confidence:     0.85,
-          matchedSignal:  'suffix_pattern',
-          matchedPattern: match.group(0) ?? '',
+          language: entry.value,
+          confidence: 0.95,
+          matchedSignal: 'phrase',
+          matchedPattern: entry.key,
         );
       }
     }
     return null;
   }
 
-  // ── 4. Comprehensive Keyword & Movie Title Sets (Confidence: 0.78) ────────
+  // ── 5. Comprehensive Keyword Sets (Confidence: 0.85) ──────────────────────
   static final Map<String, Set<String>> _keywords = {
     'Kannada': {
       'mungaru', 'kirik', 'ulidavaru', 'vikrant', 'raajakumara', 'pogaru', 'yenagali', 
@@ -133,9 +212,27 @@ class TitleLanguageDetector {
       'ramachari', 'rathavara', 'vamshi', 'dayavittu', 'gamanisi', 'snehitharu', 
       'abhinetri', 'milana', 'arasu', 'nanditha', 'manikya', 'airavata', 'chakravarthy', 
       'bharjari', 'nishabda', 'rathnan', 'prapancha', 'lanke', 'sinnga', 'padde', 'nildana', 'sangama',
-      'thanmay', 'eradu', 'ondee', 'dreamu', 'nara', 
-      // 🎯 FIXED: Added the raw keywords just to be completely safe
-      'thanmayaladenu', 'paravashanadenu', 'tabbahi', 'tabaahi'
+      'thanmay', 'eradu', 'ondee', 'dreamu', 'nara', 'thanmayaladenu', 'paravashanadenu', 'tabbahi', 'tabaahi',
+      'aakasha', 'neeli', 'aadi', 'magane', 'bheema', 'aata', 'hudugatavo', 'hatavadi', 
+      'ambara', 'ambaradaache', 'ammava', 'raathibommava', 'anisuthide', 'araluthiru', 
+      'avala', 'olava', 'nage', 'chandu', 'avalendare', 'manadalada', 'rhaatee', 'ayyo', 
+      'sivane', 'banaras', 'belakina', 'kavithe', 'geleyanige', 'gudiya', 'kattu', 'baanali', 'badalago',
+      'rajkumar', 'puneeth', 'darshan', 'hamsalekha', 'usire', 'rajesh', 'meghave', 'shetty', 
+      'gurukiran', 'bhandari', 'dennana', 'rangitaranga', 'nirup', 'radhika', 'upendra', 
+      'rishab', 'hariprriya', 'jayatheertha', 'ajaneesh', 'bhupathi', 'harikrishna', 'chithra', 
+      'sanjith', 'hegde', 'ashoka', 'amrutha', 'chandan', 'navarasan', 'apurva', 'yethake', 
+      'thangi', 'kulukabeda', 'sanje', 'amruthavarshini', 'madbeku', 'suthradaari', 'onthara', 'bindaas',
+      'geleya', 'beku', 'hoovantha', 'ivanu', 'geleyanalla', 'gajakesari', 'karunada', 'veera', 
+      'kannugale', 'lifu', 'ishtene', 'pancharangi', 'diganth', 'manomurthy', 'maatanaadi', 
+      'maayavade', 'ninthu', 'maleyali', 'jotheyali', 'manase', 'neenu', 'mosagaatiye', 
+      'arfaz', 'ullala', 'nithin', 'shankaraghatta', 'premave', 'bengaluru', 'bulls',
+      'udugore', 'moda', 'modalu', 'bhoomigilida', 'yashwanth', 'murali', 'rakshitha', 
+      'moggina', 'manasali', 'ninagende', 'visheshavaada', 'nadedaduva', 'kamanabillu', 
+      'ninnidale', 'olavina', 'kodalenu', 'ambarish', 'samane', 'poojari', 'kannalle', 
+      'lokesh', 'neethu', 'preethiya', 'hudugige', 'hogutidde', 'kanna', 'muche', 'kade', 'rambo',
+      'nalli', 'alli', 'inda', 'agide', 'bekilla', 'odeya', 'appa', 'anthe', 'odhu', 'idhe', 'idhu', 
+      'aagide', 'thaane', 'aagi', 'illa', 'allave', 'baro', 'hange', 'hinge', 'yaake', 'aase', 'jothe', 
+      'yalli', 'denu', 'adenu'
     },
     'Tamil': {
       'rowdy', 'kannaney', 'veyyon', 'silli', 'mutta', 'kalakki', 'oththa', 'rekka', 
@@ -154,7 +251,12 @@ class TitleLanguageDetector {
       'aadukalam', 'vettaiyaadu', 'vilaiyaadu', 'pithamagan', 'nanum', 'remo', 'kaala', 
       'kabali', 'lingaa', 'mouna', 'raagam', 'nayagan', 'thalapathi', 'bairavi', 'moondram', 
       'pirai', 'salangai', 'arunachalam', 'kannukkul', 'nilavu', 'thanga', 'magan', 'velai', 
-      'pattadhari', 'vanakkam', 'ethir', 'neechal', 'kappal', 'namma', 'veettu'
+      'pattadhari', 'vanakkam', 'ethir', 'neechal', 'kappal', 'namma', 'veettu',
+      'kolaveri', 'anirudh', 'dhanush', 'azhagiya', 'thimirudan',
+      'madhavan', 'meera', 'jasmine', 'balasubrahmanyam', 'kathali', 'havoc',
+      'ngale', 'kudhu', 'vaazh', 'enidhu', 'thaan', 'aala', 'laam', 'iyya', 'aachu', 'irukku', 
+      'poren', 'varen', 'vaanga', 'machan', 'chellam', 'azhagu', 'vizhi', 'uyir', 'kaatru', 
+      'mazhai', 'poove', 'pookkal', 'illai', 'endru', 'aanal', 'aagum'
     },
     'Telugu': {
       'butta', 'bomma', 'samajavaragamana', 'inkem', 'vachindamma', 'anaganaganaga', 
@@ -172,40 +274,16 @@ class TitleLanguageDetector {
       'acharya', 'mahanati', 'pelli', 'choopulu', 'falaknuma', 'mathu', 'vadalara', 'kota', 
       'bommali', 'virupaksha', 'nanna', 'mirchi', 'gaddalakonda', 'ganesh', 'uppena', 'gully', 
       'sammohanam', 'singha', 'ranga', 'vaibhavanga', 'athreya', 'goodachari', 'dhruva', 'goutham', 'nanda',
-      'ringa'
+      'ringa', 'bava', 'uppenantha',
+      'ante', 'okka', 'undi', 'leru', 'thundhi', 'nundi', 'andi', 'aaru', 'indi', 'inchi', 
+      'istam', 'ledu', 'ledha', 'thoti', 'kante', 'gurinchi', 'kosam', 'varaku', 'daka', 
+      'aite', 'aina', 'cheppu', 'leni', 'unnadi'
     },
     'Malayalam': {
-      'penne', 'ormmayil', 'melle', 'sneham', 'kanne', 'manasse', 'ninte', 'ente', 'avante', 
-      'premam', 'pranayam', 'moham', 'snehithan', 'koottukari', 'hridayam', 'hridayame', 
-      'kannil', 'kannukal', 'sundari', 'sundariye', 'ninakkai', 'enikkum', 'enikku', 'ninakku', 
-      'athu', 'ithu', 'evide', 'njaan', 'nee', 'avan', 'aval', 'nammal', 'ningal', 'ariyaathe', 
-      'ariyaam', 'varika', 'varoo', 'vannu', 'ennum', 'ini', 'innu', 'naale', 'innale', 'neram', 
-      'ratri', 'pakal', 'raavile', 'veyil', 'mazha', 'mazhakal', 'kaattu', 'kaatil', 'puzha', 
-      'puzhayil', 'aaru', 'kadal', 'kadalil', 'thirathakal', 'akale', 'arike', 'aduthu', 'doorathe', 
-      'ullil', 'purathu', 'mele', 'thazhe', 'munnil', 'pinnil', 'ishtam', 'ishtamaanu', 'snehithi', 
-      'penkutty', 'aankutty', 'chettan', 'chechi', 'aniyan', 'aniyathi', 'amma', 'achan', 'makal', 
-      'makan', 'koottukaaran', 'veedu', 'veettil', 'paattu', 'paadi', 'nritham', 'thaalam', 'raagam', 
-      'sangeetham', 'kanneer', 'punchiri', 'chiri', 'chiriye', 'chundil', 'manassil', 'manassin', 
-      'ullinte', 'bhavam', 'bhavame', 'swantham', 'janmam', 'janmamayi', 'ormmakal', 'ormmakale', 
-      'vartha', 'varthamanam', 'enikkayi', 'ninakkayi', 'varum', 'varumo', 'povum', 'nilkku', 'nil', 
-      'nadakkum', 'parayum', 'kelkku', 'kel', 'kaanan', 'kaanunna', 'kaanathe', 'marannu', 
-      'marakkilla', 'marakkam', 'premikkunnu', 'premichu', 'snehikkunnu', 'snehichu', 'orthu', 
-      'orkkunnu', 'nedi', 'nedum', 'tharaan', 'tharum', 'vaangi', 'kodukkum', 'paadum', 'paadunna', 
-      'kaanam', 'kaathu', 'nokki', 'nokkunnu', 'nokku', 'kandu', 'kandathu', 'pinne', 'pinneedu', 
-      'ennittum', 'ithuvare', 'athukond', 'drishyam', 'lucifer', 'minnal', 'jallikattu', 'kumbalangi', 
-      'maniyarayile', 'trance', 'ayyappanum', 'moothon', 'sufiyum', 'illuminati', 'aavesham', 'premalu', 
-      'bramayugam', 'goatlife', 'manichitrathazhu', 'kilukkam', 'chithram', 'thenmavin', 'kombath', 
-      'yodha', 'nirnayam', 'sadayam', 'devasuram', 'raavanaprabhu', 'narasimham', 'prajapathi', 
-      'balram', 'tharadas', 'kuttavum', 'shikshayum', 'thallumaala', 'rdx', 'manjummel', 'kishkindha', 
-      'kaandam', 'angamaly', 'ustad', 'thattathin', 'marayath', 'ohm', 'shanthi', 'oshaana', 'maheshinte', 
-      'prathikaram', 'biju', 'empuraan', 'koode', 'mayaanadhi', 'njan', 'prakashan', 'kunjappan', 
-      'vellaripravinte', 'changathi', 'superum', 'pournamiyum', 'orungil', 'jomonte', 'suviseshangal', 
-      'pulimurugan', 'ezra', 'godha', 'thondimuthalum', 'driksakshiyum', 'sudani', 'naayattu', 'malik', 
-      'joji', 'varathan', 'thira', 'lukka', 'chuppi', 'vazhthuvangal', 'nerariyan', 'cbi', 'vellimoonga', 
-      'oppam', 'mamangam', 'marakkar', 'kurup', 'bheeshma', 'parvam', 'anjaam', 'pathira', 'kappela', 
-      'kanakam', 'kamini', 'kalaham', 'puzhu', 'pathonpatham', 'noottandu', 'jana', 'gana', 'mana', 
-      'varane', 'avashyamund', 'ariyippu', 'thuramukham', 'churuli', 'thaan', 'kodu', 'romaancham',
-      'manimba', 'thani', 'shoka'
+      'maanimba', 'poomole', 'kannur', 'shabaz',
+      'njaan', 'kkund', 'undo', 'enne', 'ille', 'aane', 'aanu', 'ulla', 'thil', 'ente', 'ninte', 
+      'avante', 'avalude', 'koode', 'oppam', 'mazha', 'unni', 'kutty', 'chechi', 'chettan', 
+      'aayi', 'ittu', 'kond', 'aanenkil', 'enkil'
     },
     'Hindi': {
       'pyaar', 'tujhe', 'tumhari', 'zindagi', 'ishq', 'mohabbat', 'deewani', 'dilbar', 'humsafar', 
@@ -213,13 +291,13 @@ class TitleLanguageDetector {
       'pyaari', 'haseen', 'haseena', 'ada', 'adaayein', 'bahaar', 'bahaaron', 'mausam', 'sawan', 
       'barsaat', 'baarish', 'pani', 'nadiya', 'sahil', 'kinara', 'lehrein', 'hawa', 'hawayein', 
       'pawan', 'mehfil', 'shaam', 'subah', 'raat', 'raaton', 'din', 'duniya', 'jahaan', 'aasmaan', 
-      'zameen', 'chand', 'taare', 'taaron', 'suraj', 'kirne', 'roshni', 'andhera', 'khwab', 'khwabon', 
+      'zameen', 'chand', 'taare', 'taaron', 'kirne', 'roshni', 'andhera', 'khwab', 'khwabon', 
       'sapna', 'sapnon', 'naina', 'naino', 'aankhein', 'aankhon', 'baatein', 'baaton', 'yaadein', 
       'yaadon', 'khushi', 'gham', 'dard', 'aah', 'aansoo', 'hasi', 'hasrat', 'tamanna', 'armaan', 
       'armaanon', 'chaahat', 'wafa', 'bewafa', 'bewafai', 'inteha', 'zindagani', 'jeena', 'jeene', 
       'marna', 'jaan', 'jaaneman', 'jaanleva', 'soniye', 'mahiya', 'dholna', 'heeriye', 'raanjha', 
       'heer', 'mirza', 'channa', 'ang', 'angdaai', 'bahon', 'bahaaren', 'khushboo', 'mehak', 'rang', 
-      'rangila', 'rangrej', 'geet', 'geeton', 'sangeet', 'sargam', 'taan', 'taal', 'dhun', 'sur', 
+      'rangila', 'rangrej', 'geet', 'geeton', 'sangeet', 'sargam', 'taan', 'taal', 'dhun', 
       'saaz', 'anjaam', 'anjaane', 'begana', 'ajnabi', 'paraya', 'apna', 'apni', 'apnon', 'ghulam', 
       'bandagi', 'ibadat', 'khuda', 'rab', 'maula', 'ilaahi', 'ali', 'maalik', 'jannat', 'jahannum', 
       'aashiq', 'mashooq', 'madhosh', 'behosh', 'mast', 'masti', 'deewangi', 'aashiqui', 'sukoon', 
@@ -238,14 +316,39 @@ class TitleLanguageDetector {
       'badhaai', 'bhediya', 'munjya', 'brahmastra', 'bahadur', 'rocky', 'rani', 'kahani', 'satyaprem', 
       'hatke', 'bachke', 'kashmir', 'surgical', 'raazi', 'dhadak', 'gangubai', 'kathiawadi', 
       'befikre', 'sejal', 'chennai', 'dhadakne', 'dobara', 'sanju', 'roohi', 'bhool', 'bhulaiyaa',
-      'arjan', 'bhagwan', 'nanga', 'pehle', 'chikni',
-      // 🎯 FIXED: Added the exact Dreamum words to catch the Aiyyaa movie song perfectly
-      'dreamum', 'dremum', 'wakeupum'
+      'arjan', 'bhagwan', 'nanga', 'pehle', 'chikni', 'dreamum', 'dremum', 'wakeupum',
+      'arijit', 'pachtaoge', 'baaghi', 'sahii', 'alvida', 'aasan', 'nahin', 'yahan', 'abhi', 'desh',
+      'teri', 'dishoom', 'gori', 'cham', 'chaand', 'baaliyan', 'aditya', 'hawaioen', 'palke',
+      'liye', 'meherbaan', 'siddharth', 'musafir', 'jaana', 'soniya', 'phir', 'wahi', 
+      'piya', 'aaye', 'premika', 'sajde', 'tera', 'tere', 'binaa', 'milaw', 'tujhi', 'mein', 
+      'ullu', 'pattha', 'yaaron', 'tune', 'javed', 'bashir', 'raakh', 'huye', 'khwaab',
+      'wala', 'wali', 'wale'
     },
     'Punjabi': {
-      'jatt', 'gabru', 'mutiyar', 'viah', 'pind', 'dhol', 'chakk',
-      'kudi', 'sohneya', 'sidhu', 'moosewala', 'diljit', 'dosanjh',
-      'karan', 'aujla', 'shubh', 'punjabi', 'munde',
+      'jatt', 'gabru', 'mutiyar', 'viah', 'pind', 'dhol', 'dholna', 'soniye', 'heeriye', 'mahiya', 
+      'sajjna', 'raanjha', 'heer', 'mirza', 'sohni', 'channa', 'taare', 'akhan', 'naina', 'nachdi', 
+      'gidha', 'bhangra', 'boliyan', 'putt', 'kudi', 'munda', 'jawani', 'rangla'
+    },
+    'English': {
+      'lana', 'feat', 'lyrics', 'music', 'travis', 'scott', 'ringtone', 'lyric', 'joker', 'badam', 
+      'hits', 'trending', 'anne', 'paul', 'rockabye', 'sean', 'bandit', 'clean', 'marie', 
+      'cradles', 'dharia', 'szhyr', 'brownies', 'girl', 'extended', 'cinnamon', 'casa', 'papel', 
+      'artbat', 'atlxs', 'aurora', 'hazakura', 'alan', 'walker', 'eilish', 'billie', 'ckay', 'joeboy', 
+      'enisa', 'emin', 'jony', 'flute', 'remix', 'netflix', 'audio', 'lover', 'dawn', 'daylight', 
+      'sugar', 'soul', 'mockingbird', 'middle', 'night', 'calm', 'blur', 'better', 'concorde', 'bass', 
+      'beat', 'slowed', 'reverb', 'tiktok', 'viral', 'instrumental', 'lose', 'control', 'fergie', 
+      'nathan', 'visualiser', 'julia', 'michaels', 'cheri', 'stop', 'mashup', 'praniti', 'world', 
+      'glow', 'golden', 'class', 'heroes', 'stereo', 'hearts', 'adam', 'levine', 'hippie', 'sabotage', 
+      'devil', 'eyes', 'indila', 'tourner', 'dans', 'vide', 'indulgence', 'insomnia', 'jeanette', 
+      'porque', 'joris', 'voorn', 'nicholson', 'july', 'jungle', 'karol', 'shakira', 'laura', 'argy', 
+      'omnya', 'loreen', 'tattoo', 'lukas', 'graham', 'enemy', 'eternity', 'fall', 'again', 'further', 
+      'away', 'aran', 'asking', 'miracle', 'mirador', 'album', 'miss', 'molfar', 'mwaki', 'wanna', 
+      'slave', 'never', 'forget', 'nobody', 'nudge', 'vocal', 'other', 'side', 'pantheon', 'piggyback', 
+      'react', 'rauf', 'faik', 'childhood', 'solar', 'safari', 'shrink', 'snappy', 'subliminal', 
+      'sweet', 'jazz', 'sweater', 'weather', 'randall', 'wahran', 'sandra', 'lullaby', 'melodic', 
+      'techno', 'tango', 'tennis', 'chant', 'neighbourhood', 'rapture', 'tokyo', 'drift', 'tones', 
+      'treasure', 'tungevaag', 'raaban', 'welcome', 'whistle', 'gray', 'goes', 'nanana', 'arquitecto', 
+      'sombras', 'without'
     },
   };
 
@@ -254,7 +357,7 @@ class TitleLanguageDetector {
         .toLowerCase()
         .split(RegExp(r'\s+'))
         .map((t) => t.replaceAll(RegExp(r'[^a-z]'), ''))
-        .where((t) => t.length >= 3)
+        .where((t) => t.length >= 3) 
         .toSet();
 
     for (final entry in _keywords.entries) {
@@ -262,7 +365,7 @@ class TitleLanguageDetector {
         if (tokens.contains(keyword)) {
           return TitleDetectionResult(
             language:       entry.key,
-            confidence:     0.78,
+            confidence:     0.85,
             matchedSignal:  'keyword',
             matchedPattern: keyword,
           );
@@ -272,25 +375,27 @@ class TitleLanguageDetector {
     return null;
   }
 
-  // ── 5. Main Entry Point ────────────────────────────────────────────────────
+  // ── 6. Main Entry Point ────────────────────────────────────────────────────
   static TitleDetectionResult? classify(String? title) {
     if (title == null || title.trim().isEmpty) return null;
+
+    final hexResult = _detectRawHex(title);
+    if (hexResult != null) return hexResult;
 
     final cleaned = cleanTitle(title);
     if (cleaned.isEmpty) return null;
 
-    // Check 1: Script (Kannada/Tamil/etc. native letters)
     final scriptResult = _detectScript(cleaned);
     if (scriptResult != null) return scriptResult;
 
-    // Check 2: Phonetic Suffixes (e.g. -nalli, -ante, -kaadhal)
-    final suffixResult = _detectSuffix(cleaned);
-    if (suffixResult != null) return suffixResult;
+    // 🎯 ADDED: Exact phrase matching is now checked BEFORE single keywords 
+    // to prevent generic English/Hindi words from hijacking regional titles.
+    final phraseResult = _detectPhrase(cleaned);
+    if (phraseResult != null) return phraseResult;
 
-    // Check 3: Keywords & Film Names
     final keywordResult = _detectKeyword(cleaned);
     if (keywordResult != null) return keywordResult;
 
-    return null; // Not found -> let ML Kit or other fallbacks handle it
+    return null; 
   }
 }

@@ -36,7 +36,7 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme" />
               
-            <!-- 🎯 NEW: Required by audio_service when using a custom MainActivity -->
+            <!-- Required by audio_service when using a custom MainActivity -->
             <meta-data 
               android:name="com.ryanheise.audioservice.activity.PROVIDES_BACKGROUND" 
               android:value="true"/>
@@ -70,6 +70,16 @@
     </application>
     
     <queries>
+        <!-- Required for url_launcher to open URLs in external browser (Android 11+) -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="http" />
+        </intent>
+
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>

@@ -11,7 +11,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:soniq/audio/audio_scanner.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
-// import 'package:url_launcher/url_launcher.dart'; // Uncomment after adding the package
 import '../../database/backup_service.dart';
 import '../sheets/sleep_timer_sheet.dart';
 import 'package:soniq/ui/screens/stats_screen.dart';
@@ -21,6 +20,7 @@ import 'package:soniq/providers.dart';
 import 'package:soniq/classifier/language_service.dart';
 import 'package:soniq/ui/screens/equalizer_screen.dart'; 
 import 'package:soniq/src/providers/scan_notifier.dart';
+import 'package:soniq/ui/screens/privacy_policy_screen.dart'; // 🎯 Added new import
 
 final themeModeProvider = StateProvider<ThemeMode>((ref) => ThemeMode.dark);
 
@@ -310,18 +310,19 @@ class SettingsScreen extends ConsumerWidget {
 
           // ─── ABOUT & LEGAL ──────────────────────────────────────────
           _buildSectionHeader('About & Legal', primaryColor),
+          
+          // 🎯 Navigates to the new full-screen Privacy Policy
           ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 24.0),
             leading: Icon(Icons.privacy_tip_rounded, color: secondaryColor),
             title: Text('Privacy Policy', style: TextStyle(color: textColor, fontWeight: FontWeight.w500)),
             subtitle: Text('Data Safety and permissions', style: TextStyle(color: subTextColor, fontSize: 13)),
-            trailing: Icon(Icons.open_in_new_rounded, color: chevronColor, size: 20),
-            onTap: () async {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: const Text('Opening Privacy Policy in browser...'),
-                  backgroundColor: secondaryColor,
-                  behavior: SnackBarBehavior.floating,
+            trailing: Icon(Icons.chevron_right_rounded, color: chevronColor),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const PrivacyPolicyScreen(),
                 ),
               );
             },

@@ -1,6 +1,5 @@
 // ============================================================
-//  SONIQ — android/app/build.gradle.kts  (Kotlin DSL)
-//  AGP 8.11.1 | Kotlin 2.2.20 | compileSdk 36 | NDK 28.2.x
+//  SONIQ — android/app/build.gradle.kts (Kotlin DSL)
 // ============================================================
 
 import java.io.FileInputStream
@@ -12,7 +11,7 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-// 🎯 NEW: Load the key.properties file securely from your Mac
+// 🎯 Load key.properties from the android/ directory or project root
 val keystorePropertiesFile = rootProject.file("key.properties")
 val keystoreProperties = Properties()
 if (keystorePropertiesFile.exists()) {
@@ -23,7 +22,7 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace  = "com.soniq.music"
     compileSdk = 36
-    ndkVersion = "28.2.13676358"
+    ndkVersion = flutter.ndkVersion
 
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
@@ -32,9 +31,9 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.soniq.music"
+        applicationId = "com.lambda17.soniq"
         minSdk        = 24
-        targetSdk     = 36 // 🎯 FIXED: Updated to 36 for Google Play 2026 compliance
+        targetSdk     = 36
         versionCode   = flutter.versionCode
         versionName   = flutter.versionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -49,16 +48,16 @@ android {
         }
        
         create("release") {
-            // 🎯 FIXED: Prioritize local key.properties, fallback to GitHub env vars
             val envPath = System.getenv("KEYSTORE_PATH")
             val localPath = keystoreProperties["storeFile"]?.toString()
             
-            storeFile = when {
-                !envPath.isNullOrEmpty() -> file(envPath)
-                !localPath.isNullOrEmpty() -> file(localPath)
-                else -> file("upload-keystore.jks")
+            val keystoreFilePath = when {
+                !envPath.isNullOrEmpty() -> envPath
+                !localPath.isNullOrEmpty() -> localPath
+                else -> "/Users/balaji.v/upload-keystore.jks"
             }
-           
+
+            storeFile = file(keystoreFilePath)
             storePassword = System.getenv("KEYSTORE_PASSWORD") 
                 ?: keystoreProperties["storePassword"]?.toString() ?: ""
             keyAlias = System.getenv("KEY_ALIAS") ?: System.getenv("ALIAS") 
@@ -69,22 +68,16 @@ android {
     }
 
     buildTypes {
-        debug {
+        getByName("debug") {
             signingConfig = signingConfigs.getByName("debug")
             manifestPlaceholders["crashlyticsEnabled"] = "false"
             applicationIdSuffix = ".debug"
             versionNameSuffix   = "-debug"
         }
-        release {
-            // 🎯 FIXED: Force the release build to use the Release key if passwords exist!
-            val hasEnv = !System.getenv("KEYSTORE_PASSWORD").isNullOrEmpty()
-            val hasLocal = keystorePropertiesFile.exists() && !keystoreProperties["storePassword"]?.toString().isNullOrEmpty()
-            
-            if (hasEnv || hasLocal) {
-                signingConfig = signingConfigs.getByName("release")
-            } else {
-                signingConfig = signingConfigs.getByName("debug")
-            }
+
+        getByName("release") {
+            // Force release builds to use the release signing config
+            signingConfig = signingConfigs.getByName("release")
            
             manifestPlaceholders["crashlyticsEnabled"] = "true"
             isMinifyEnabled   = true
@@ -113,7 +106,7 @@ android {
                 "META-INF/LICENSE.txt",
                 "META-INF/NOTICE",
                 "META-INF/NOTICE.txt",
-                "/META-INF/{AL2.0,LGPL2.1}",
+                "/META-INF/{AL2.0,LGPL2.1}"
             )
         }
         jniLibs {
@@ -122,7 +115,7 @@ android {
     }
 }
 
-// ── Kotlin compiler options (TOP LEVEL — outside android{}) ──
+// ── Kotlin compiler options ──────────────────────────────────
 kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)

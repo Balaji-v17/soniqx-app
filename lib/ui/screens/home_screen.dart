@@ -4,6 +4,7 @@
 
 import 'dart:io';
 import 'package:soniq/ui/widgets/mini_waveform.dart';
+import 'package:soniq/services/song_deletion_service.dart';
 import 'package:soniq/utils/time_utils.dart';
 import 'package:soniq/ui/screens/browse_screens.dart'; 
 import 'package:soniq/ui/widgets/skeleton_loaders.dart';
@@ -28,6 +29,7 @@ import 'package:soniq/ui/screens/playlist_detail_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:soniq/audio/shuffle_engine.dart';
 import 'package:soniq/audio/music_scanner.dart';
+import 'package:soniq/classifier/title_language_detector.dart';
 
 // 🎯 CACHED STREAM PROVIDERS 
 final recentlyPlayedProvider = StreamProvider.autoDispose((ref) {
@@ -115,6 +117,55 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void dispose() {
     _scrollController.dispose();
     super.dispose();
+  }
+
+  // 🚨 BRUTE FORCE DIAGNOSTIC TOOL
+  Future<void> _forceExtractUnclassified() async {
+    final db = ref.read(databaseProvider);
+    
+    // Pull literally everything from the DB
+    final allSongs = await db.songsDao.watchAllAvailable().first;
+    
+    // Filter manually in Dart so SQL can't hide anything from us
+    final unclassified = allSongs.where((s) {
+      final tag = s.languageTag?.toLowerCase().trim() ?? '';
+      return tag.isEmpty || tag == 'und' || tag == 'unclassified';
+    }).toList();
+
+    debugPrint("🚨 ACTUAL UNCLASSIFIED COUNT: ${unclassified.length}");
+
+    if (unclassified.isEmpty) {
+      debugPrint("Okay, it actually is 0 this time.");
+      return;
+    }
+
+    final Map<String, int> wordCounts = {};
+    
+    for (final song in unclassified) {
+      final clean = TitleLanguageDetector.cleanTitle(song.title ?? '');
+      final words = clean.toLowerCase().split(RegExp(r'\s+'));
+      
+      for (final w in words) {
+        final pureWord = w.replaceAll(RegExp(r'[^a-z]'), '');
+        if (pureWord.length >= 4) {
+          wordCounts[pureWord] = (wordCounts[pureWord] ?? 0) + 1;
+        }
+      }
+    }
+
+    final sorted = wordCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    debugPrint("=== TOP MISSING WORDS IN YOUR FILES ===");
+    for (var i = 0; i < 60 && i < sorted.length; i++) {
+      debugPrint("${sorted[i].key} (Appears ${sorted[i].value} times)");
+    }
+
+    debugPrint("=== TOP 50 UNCLASSIFIED RAW TITLES ===");
+    for (var i = 0; i < 50 && i < unclassified.length; i++) {
+      debugPrint("${i + 1}. ${unclassified[i].title}");
+    }
+    debugPrint("======================================");
   }
 
   Future<void> _healSeededTracks() async {
@@ -296,7 +347,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  void _confirmDeleteTracks() {
+void _confirmDeleteTracks() {
     final colorScheme = Theme.of(context).colorScheme;
     showDialog(
       context: context,
@@ -304,7 +355,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         backgroundColor: colorScheme.surface,
         title: Text('Delete ${_selectedSongIds.length} tracks?', style: TextStyle(color: colorScheme.onSurface)),
         content: Text(
-          'This action will permanently remove these tracks from your library.',
+          'This action will permanently remove the MP3 files from your device storage.',
           style: TextStyle(color: colorScheme.onSurface.withOpacity(0.7)),
         ),
         actions: [
@@ -314,15 +365,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
           TextButton(
             onPressed: () async {
+              // 1. Close the dialog immediately to prevent multiple clicks
+              Navigator.pop(context);
+              
               final db = ref.read(databaseProvider);
+              int successCount = 0;
+
+              // 2. Loop through and request native deletion
               for (final id in _selectedSongIds) {
-                await (db.delete(db.songs)..where((t) => t.id.equals(id))).go();
+                // Trigger the Android Native Delete (shows dialog on Android 11+)
+                final isDeletedOnStorage = await SongDeletionService.permanentDelete(id);
+
+                // 3. Only delete from our database if the user granted permission 
+                // and Android successfully deleted the file
+                if (isDeletedOnStorage) {
+                  await (db.delete(db.songs)..where((t) => t.id.equals(id))).go();
+                  successCount++;
+                }
               }
+
               if (context.mounted) {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Selected tracks removed.'), backgroundColor: Colors.redAccent),
-                );
+                if (successCount > 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Successfully deleted $successCount track(s).'), backgroundColor: Colors.redAccent),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Deletion cancelled or failed.'), backgroundColor: Colors.orange),
+                  );
+                }
                 _exitSelectionMode();
               }
             },
@@ -332,7 +403,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
     );
   }
-
   @override
   Widget build(BuildContext context) {
     final database = ref.watch(databaseProvider);
@@ -401,6 +471,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         ),
                         GestureDetector(
                           onTap: _showNamePromptDialog,
+                          onLongPress: _forceExtractUnclassified, // 🚨 THE REAL EXTRACTOR
                           child: CircleAvatar(
                             radius: 24,
                             backgroundColor: colorScheme.surface,
@@ -1245,11 +1316,34 @@ class _RecentVerticalTile extends ConsumerWidget {
               fontWeight: isCurrentlyPlaying ? FontWeight.bold : FontWeight.w600
             )
           ),
-          subtitle: Text(
-            song.artist ?? 'Unknown Artist', 
-            maxLines: 1, 
-            overflow: TextOverflow.ellipsis, 
-            style: TextStyle(color: colorScheme.onBackground.withOpacity(0.54), fontSize: 13)
+          subtitle: Row(
+            children: [
+              if ((song.languageTag != null && song.languageTag!.isNotEmpty) || (song.genre != null && song.genre!.isNotEmpty))
+                Container(
+                  margin: const EdgeInsets.only(right: 6, top: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: colorScheme.primary.withOpacity(0.5)),
+                  ),
+                  child: Text(
+                    _getDisplayLanguage(song.languageTag?.isNotEmpty == true ? song.languageTag : song.genre).toUpperCase(), 
+                    style: TextStyle(color: colorScheme.primary, fontSize: 9, fontWeight: FontWeight.bold)
+                  ),
+                ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    song.artist ?? 'Unknown Artist', 
+                    maxLines: 1, 
+                    overflow: TextOverflow.ellipsis, 
+                    style: TextStyle(color: colorScheme.onBackground.withOpacity(0.54), fontSize: 13)
+                  ),
+                ),
+              ),
+            ],
           ),
           onLongPress: onLongPress,
           onTap: onTapOverride ?? () async {
@@ -1264,21 +1358,6 @@ class _RecentVerticalTile extends ConsumerWidget {
           trailing: isSelectionMode ? null : Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if ((song.languageTag != null && song.languageTag!.isNotEmpty) || (song.genre != null && song.genre!.isNotEmpty))
-                Container(
-                  margin: const EdgeInsets.only(right: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primary.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: colorScheme.primary.withOpacity(0.5)),
-                  ),
-                  child: Text(
-                    _getDisplayLanguage(song.languageTag?.isNotEmpty == true ? song.languageTag : song.genre).toUpperCase(), 
-                    style: TextStyle(color: colorScheme.primary, fontSize: 9, fontWeight: FontWeight.bold)
-                  ),
-                ),
-              
               Consumer(
                 builder: (context, ref, child) {
                   final isFav = ref.watch(isFavoriteProvider(song.id)).value ?? false;

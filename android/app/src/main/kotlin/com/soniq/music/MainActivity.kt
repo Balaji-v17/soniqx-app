@@ -1,6 +1,6 @@
 package com.soniq.music
 
-import com.ryanheise.audioservice.AudioServiceActivity
+import com.ryanheise.audioservice.AudioServiceFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import com.soniq.app.FastTextClassifier
 import com.soniq.app.FastTextClassifierApi
@@ -9,23 +9,22 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-// 🎯 FIXED: Extends AudioServiceActivity to prevent background crashes
-class MainActivity: AudioServiceActivity() {
+class MainActivity: AudioServiceFragmentActivity() {
     private val HEALER_CHANNEL = "com.soniq.music/healer"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         
-        // 1. Restore the ML Kit Classifier
-        val fastTextClassifier = FastTextClassifier(context)
+        // 1. Use applicationContext to prevent Kotlin 'context' keyword collision
+        val fastTextClassifier = FastTextClassifier(applicationContext)
         FastTextClassifierApi.setUp(flutterEngine.dartExecutor.binaryMessenger, fastTextClassifier)
 
-        // 2. Add the new Duration Healer Channel
+        // 2. Add the Duration Healer Channel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, HEALER_CHANNEL).setMethodCallHandler { call, result ->
             if (call.method == "healDurations") {
                 val ids = call.argument<List<Int>>("ids") ?: emptyList()
                 CoroutineScope(Dispatchers.Main).launch {
-                    val healer = DurationHealerApiImpl(context)
+                    val healer = DurationHealerApiImpl(applicationContext)
                     val healedData = healer.healDurations(ids)
                     result.success(healedData)
                 }
@@ -33,5 +32,8 @@ class MainActivity: AudioServiceActivity() {
                 result.notImplemented()
             }
         }
+
+        // 3. Register Native Song Deletion Bridge (passes 'this' as ComponentActivity)
+        SongDeletionBridge(this, flutterEngine.dartExecutor.binaryMessenger)
     }
 }
