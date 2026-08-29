@@ -18,6 +18,19 @@ class SongDeletionService {
     }
   }
 
+  /// Permanently deletes multiple songs with a single Android 11+ system dialog.
+  static Future<bool> permanentDeleteBatch(List<int> songIds) async {
+    try {
+      final bool? success = await _channel.invokeMethod('permanentDeleteBatch', {
+        'songIds': songIds,
+      });
+      return success ?? false;
+    } on PlatformException catch (e) {
+      debugPrint('Batch delete error: ${e.message}');
+      return false;
+    }
+  }
+
   /// Moves a song to Android system trash (Android 12+ / API 31+).
   /// Returns `false` on older devices so you can fall back to normal delete.
   static Future<bool> moveToTrash(int songId) async {

@@ -55,6 +55,14 @@ class SongDeletionBridge(
                     }
                     permanentDelete(songId, result)
                 }
+                "permanentDeleteBatch" -> {
+                    val songIds = call.argument<List<Int>>("songIds")?.map { it.toLong() }
+                    if (songIds.isNullOrEmpty()) {
+                        result.error("INVALID_ARGS", "songIds required", null)
+                        return@setMethodCallHandler
+                    }
+                    permanentDeleteBatch(songIds, result)
+                }
                 "moveToTrash" -> {
                     val songId = call.argument<Int>("songId")?.toLong()
                     if (songId == null) {
@@ -65,6 +73,42 @@ class SongDeletionBridge(
                 }
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    private fun permanentDeleteBatch(songIds: List<Long>, result: MethodChannel.Result) {
+        val uris = songIds.map { id ->
+            ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            // Android 11+: ONE createDeleteRequest with ALL uris triggers a single dialog
+            try {
+                val pendingIntent = MediaStore.createDeleteRequest(
+                    activity.contentResolver,
+                    uris
+                )
+                pendingResult = result
+                deleteLauncher.launch(
+                    IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "permanentDeleteBatch failed: ${e.message}")
+                result.error("DELETE_FAILED", e.message, null)
+            }
+        } else {
+            // API 29 and below: Delete each directly, no dialog needed
+            var allDeleted = true
+            for (uri in uris) {
+                try {
+                    val deleted = activity.contentResolver.delete(uri, null, null)
+                    if (deleted == 0) allDeleted = false
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error deleting batch item $uri: ${e.message}")
+                    allDeleted = false
+                }
+            }
+            result.success(allDeleted)
         }
     }
 

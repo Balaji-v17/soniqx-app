@@ -295,7 +295,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   void _showLanguageTagDialog() {
     final colorScheme = Theme.of(context).colorScheme;
-    final List<String> availableLanguages = ['Hindi', 'Kannada', 'Tamil', 'Telugu', 'Malayalam', 'English'];
+    final List<String> availableLanguages = ['Hindi', 'Kannada', 'Tamil', 'Telugu', 'Malayalam', 'Punjabi', 'Bengali', 'English', 'Instrumental'];
 
     showModalBottomSheet(
       context: context,
@@ -369,25 +369,18 @@ void _confirmDeleteTracks() {
               Navigator.pop(context);
               
               final db = ref.read(databaseProvider);
-              int successCount = 0;
+              final idsList = _selectedSongIds.toList();
 
-              // 2. Loop through and request native deletion
-              for (final id in _selectedSongIds) {
-                // Trigger the Android Native Delete (shows dialog on Android 11+)
-                final isDeletedOnStorage = await SongDeletionService.permanentDelete(id);
-
-                // 3. Only delete from our database if the user granted permission 
-                // and Android successfully deleted the file
-                if (isDeletedOnStorage) {
-                  await (db.delete(db.songs)..where((t) => t.id.equals(id))).go();
-                  successCount++;
-                }
-              }
+              // 2. Trigger the batch delete (Shows ONE dialog for all songs)
+              final isDeletedOnStorage = await SongDeletionService.permanentDeleteBatch(idsList);
 
               if (context.mounted) {
-                if (successCount > 0) {
+                if (isDeletedOnStorage) {
+                  // 3. Batch delete from Drift database instantly
+                  await (db.delete(db.songs)..where((t) => t.id.isIn(idsList))).go();
+                  
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Successfully deleted $successCount track(s).'), backgroundColor: Colors.redAccent),
+                    SnackBar(content: Text('Successfully deleted ${idsList.length} track(s).'), backgroundColor: Colors.redAccent),
                   );
                 } else {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -863,7 +856,7 @@ void _confirmDeleteTracks() {
   Widget _buildFilterChips(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
     final activeFilter = ref.watch(libraryFilterProvider);
-    final languages = ['All Tracks', 'Hindi', 'Kannada', 'Tamil', 'Telugu', 'Malayalam', 'English', 'Unclassified'];
+    final languages = ['All Tracks', 'Hindi', 'Kannada', 'Tamil', 'Telugu', 'Malayalam', 'Punjabi', 'Bengali', 'English', 'Instrumental', 'Unclassified'];
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -1355,43 +1348,56 @@ class _RecentVerticalTile extends ConsumerWidget {
             await handler.skipToQueueItem(currentIndex);
             await handler.play();
           },
-          trailing: isSelectionMode ? null : Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Consumer(
-                builder: (context, ref, child) {
-                  final isFav = ref.watch(isFavoriteProvider(song.id)).value ?? false;
-                  return IconButton(
-                    icon: Icon(
-                      isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                      color: isFav ? colorScheme.primary : colorScheme.onBackground.withOpacity(0.38),
-                      size: 20,
-                    ),
-                    onPressed: () => db.playlistsDao.toggleFavorite(song.id),
-                  );
-                },
-              ),
-              const SizedBox(width: 8),
-              
-              Text(
-                formatSongDuration(song.durationMs), 
-                style: TextStyle(color: colorScheme.onBackground.withOpacity(0.38), fontSize: 13)
-              ),
-              
-              PopupMenuButton<String>(
-                icon: Icon(Icons.more_vert, color: colorScheme.onBackground.withOpacity(0.38), size: 20),
-                color: colorScheme.surface,
-                onSelected: (value) {
-                  if (value == 'add_to_playlist') AddToPlaylistSheet.show(context, song.id);
-                  if (value == 'edit_tag') Future.delayed(const Duration(milliseconds: 50), () => ManualTagSheet.show(context, song));
-                },
-                itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                  PopupMenuItem<String>(value: 'add_to_playlist', child: Row(children: [Icon(Icons.playlist_add, size: 20, color: colorScheme.onSurface), const SizedBox(width: 12), Text('Add to Playlist', style: TextStyle(color: colorScheme.onSurface))])),
-                  PopupMenuItem<String>(value: 'edit_tag', child: Row(children: [Icon(Icons.label_outline, size: 20, color: colorScheme.onSurface), const SizedBox(width: 12), Text('Edit Language Tag', style: TextStyle(color: colorScheme.onSurface))])),
+          trailing: isSelectionMode 
+            ? Padding(
+                padding: const EdgeInsets.only(right: 8.0),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(
+                    isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                    key: ValueKey<bool>(isSelected),
+                    color: isSelected ? colorScheme.primary : colorScheme.onBackground.withOpacity(0.3),
+                    size: 24,
+                  ),
+                ),
+              )
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Consumer(
+                    builder: (context, ref, child) {
+                      final isFav = ref.watch(isFavoriteProvider(song.id)).value ?? false;
+                      return IconButton(
+                        icon: Icon(
+                          isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                          color: isFav ? colorScheme.primary : colorScheme.onBackground.withOpacity(0.38),
+                          size: 20,
+                        ),
+                        onPressed: () => db.playlistsDao.toggleFavorite(song.id),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  
+                  Text(
+                    formatSongDuration(song.durationMs), 
+                    style: TextStyle(color: colorScheme.onBackground.withOpacity(0.38), fontSize: 13)
+                  ),
+                  
+                  PopupMenuButton<String>(
+                    icon: Icon(Icons.more_vert, color: colorScheme.onBackground.withOpacity(0.38), size: 20),
+                    color: colorScheme.surface,
+                    onSelected: (value) {
+                      if (value == 'add_to_playlist') AddToPlaylistSheet.show(context, song.id);
+                      if (value == 'edit_tag') Future.delayed(const Duration(milliseconds: 50), () => ManualTagSheet.show(context, song));
+                    },
+                    itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                      PopupMenuItem<String>(value: 'add_to_playlist', child: Row(children: [Icon(Icons.playlist_add, size: 20, color: colorScheme.onSurface), const SizedBox(width: 12), Text('Add to Playlist', style: TextStyle(color: colorScheme.onSurface))])),
+                      PopupMenuItem<String>(value: 'edit_tag', child: Row(children: [Icon(Icons.label_outline, size: 20, color: colorScheme.onSurface), const SizedBox(width: 12), Text('Edit Language Tag', style: TextStyle(color: colorScheme.onSurface))])),
+                    ],
+                  ),
                 ],
               ),
-            ],
-          ),
         );
       }
     );

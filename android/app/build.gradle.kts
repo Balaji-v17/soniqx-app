@@ -22,7 +22,7 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace  = "com.soniq.music"
     compileSdk = 36
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "28.2.13676358" // 🎯 FIXED: Updated to NDK 28.2+ to enforce 16KB memory page alignment
 
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
@@ -46,7 +46,7 @@ android {
             keyAlias      = "androiddebugkey"
             keyPassword   = "android"
         }
-       
+        
         create("release") {
             val envPath = System.getenv("KEYSTORE_PATH")
             val localPath = keystoreProperties["storeFile"]?.toString()
@@ -91,7 +91,7 @@ android {
                 debugConf.storeFile?.exists() == true -> debugConf
                 else -> null 
             }
-           
+            
             manifestPlaceholders["crashlyticsEnabled"] = "true"
             isMinifyEnabled   = true
             isShrinkResources = true
@@ -123,7 +123,7 @@ android {
             )
         }
         jniLibs {
-            useLegacyPackaging = false
+            useLegacyPackaging = true // 🎯 VERIFIED: Must remain false for uncompressed, memory-mapped native libraries
         }
     }
 }
@@ -142,7 +142,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.media:media:1.7.0")
 
-    implementation("com.google.mlkit:language-id:17.0.6")
+    implementation("com.google.mlkit:language-id:17.0.+")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

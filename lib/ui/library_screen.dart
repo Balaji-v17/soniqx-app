@@ -218,7 +218,8 @@ class LibraryScreen extends ConsumerWidget {
 
   SliverToBoxAdapter _buildFilterChips(BuildContext context, WidgetRef ref) {
     final activeFilter = ref.watch(libraryFilterProvider);
-    final languages = ['All Tracks', 'Hindi', 'Kannada', 'Tamil', 'Telugu', 'English'];
+    // 🎯 FIXED: Replaced the old language list with the complete master list
+    final languages = ['All Tracks', 'Hindi', 'Kannada', 'Tamil', 'Telugu', 'Malayalam', 'Punjabi', 'Bengali', 'English', 'Instrumental', 'Unclassified'];
 
     return SliverToBoxAdapter(
       child: SingleChildScrollView(

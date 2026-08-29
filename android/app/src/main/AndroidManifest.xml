@@ -1,28 +1,29 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Permissions for Android 13+ (API 33+) -->
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Legacy storage permissions for Android 12 and below -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+
+    <!-- Background playback & system alarms -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.BLUETOOTH" />
-    
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-    
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
-    <!-- Required for deleting files on Android 11+ -->
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
     <application
         android:label="Soniq"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon"
         android:enableOnBackInvokedCallback="true" 
-        android:extractNativeLibs="true"
+        android:extractNativeLibs="false"
         android:allowBackup="false"
-        android:fullBackupContent="false"
-        android:requestLegacyExternalStorage="true">
+        android:fullBackupContent="false">
+        
        <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -36,7 +37,7 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme" />
               
-            <!-- Required by audio_service when using a custom MainActivity -->
+            <!-- Required by audio_service -->
             <meta-data 
               android:name="com.ryanheise.audioservice.activity.PROVIDES_BACKGROUND" 
               android:value="true"/>
@@ -70,7 +71,6 @@
     </application>
     
     <queries>
-        <!-- Required for url_launcher to open URLs in external browser (Android 11+) -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
@@ -79,7 +79,6 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="http" />
         </intent>
-
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>

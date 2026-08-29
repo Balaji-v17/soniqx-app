@@ -3,16 +3,17 @@
 //  Core playback engine & background lockscreen sync.
 // ============================================================
 
+import 'package:flutter/foundation.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:soniq/audio/artwork_extractor.dart';
 import 'package:soniq/database/database.dart'; 
+import 'package:soniq/fallback_art_manager.dart';
 
-// ─── CUSTOM REPEAT MODE ENUM ─────────────────────────────────
 enum SoniqRepeatMode {
-  none,   // no repeat         — icon: repeat (grey/inactive)
-  once,   // repeat song once  — icon: repeat with "1" badge (blue/active)
-  all,    // repeat all songs  — icon: repeat (blue/active)
+  none,   
+  once,   
+  all,    
 }
 
 class SoniqAudioHandler extends BaseAudioHandler with SeekHandler {
@@ -21,17 +22,20 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler {
   late final AudioPlayer _player;
   final AndroidEqualizer _equalizer = AndroidEqualizer();
   
-  // 🎯 PUBLIC GETTERS FOR YOUR UI SCREENS
   AudioPlayer get player => _player;
   AndroidEqualizer get equalizer => _equalizer;
   
-  // 🎯 HISTORY TRACKER
   String? _lastRecordedMediaId;
 
-  // 🎯 REPEAT ONCE TRACKERS
   SoniqRepeatMode _repeatMode = SoniqRepeatMode.none;
   bool _songRepeatedOnce = false;
   Duration _prevPosition = Duration.zero;
+
+  static const _closeControl = MediaControl(
+    androidIcon: 'drawable/ic_close',
+    label: 'Close',
+    action: MediaAction.stop,
+  );
 
   SoniqAudioHandler(this._db) {
     final pipeline = AudioPipeline(
@@ -43,46 +47,63 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler {
   }
 
   Future<void> _init() async {
-    // 1. Tell Android what controls we support right away
     playbackState.add(playbackState.value.copyWith(
-      controls: [MediaControl.skipToPrevious, MediaControl.play, MediaControl.skipToNext],
+      controls: [
+        MediaControl.skipToPrevious, 
+        MediaControl.play, 
+        MediaControl.skipToNext,
+        _closeControl,
+      ],
       systemActions: const {MediaAction.seek},
       processingState: AudioProcessingState.idle,
     ));
 
-    // 2. Listen to the internal audio player and sync it to the lockscreen
-    _player.playbackEventStream.listen(_broadcastState);
+    // Updated listener to catch missing files (ghost songs)
+    _player.playbackEventStream.listen(
+      _broadcastState,
+      onError: (Object error, StackTrace stackTrace) async {
+        debugPrint('Playback error (File likely missing): $error');
+        
+        final currentIndex = _player.currentIndex;
+        if (currentIndex != null && currentIndex < queue.value.length) {
+          final failedSong = queue.value[currentIndex];
+          
+          // Use the MediaItem ID to purge the missing file from the database
+          final songId = int.tryParse(failedSong.id);
+          if (songId != null) {
+             await (_db.delete(_db.songs)..where((s) => s.id.equals(songId))).go();
+          }
+          
+          // Automatically skip to the next valid song to prevent stalling
+          await skipToNext();
+        }
+      },
+    );
 
-    // 3. Listen to sequenceStateStream for dynamic queue updates & lazy artwork extraction
     _player.sequenceStateStream.listen((sequenceState) async {
       if (sequenceState == null) return;
 
-      // Automatically updates the visual queue to match the Shuffled order
       final effectiveQueue = sequenceState.effectiveSequence
           .map((source) => source.tag as MediaItem)
           .toList();
       queue.add(effectiveQueue);
 
-      // Keep the currently playing track metadata synced
       final currentSource = sequenceState.currentSource;
       if (currentSource != null) {
         var item = currentSource.tag as MediaItem;
         
-        // Push metadata immediately so title/artist render with 0 latency
         mediaItem.add(item);
 
-        // LAZY ARTWORK EXTRACTION
         if (item.artUri == null) {
           final path = item.extras?['path'] as String?;
           if (path != null && path.isNotEmpty) {
             final artUri = await ArtworkExtractor.getArtUriFromPath(path);
-            if (artUri != null) {
-              mediaItem.add(item.copyWith(artUri: artUri));
-            }
+            mediaItem.add(item.copyWith(artUri: artUri ?? FallbackArtManager.uri));
+          } else {
+            mediaItem.add(item.copyWith(artUri: FallbackArtManager.uri));
           }
         }
 
-        // Centralized Auto-Play History Tracking
         if (_lastRecordedMediaId != item.id) {
           _lastRecordedMediaId = item.id;
           
@@ -105,7 +126,6 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler {
       }
     });
 
-    // 4. The Self-Healing Duration Trigger
     _player.durationStream.listen((Duration? duration) {
       if (duration != null && duration.inMilliseconds > 0) {
         final currentSource = _player.sequenceState?.currentSource;
@@ -121,14 +141,10 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler {
       }
     });
 
-    // 5. The Repeat Once Position Tracker
     _player.positionStream.listen(_handleRepeatOncePosition);
   }
 
-  // ─── REPEAT ONCE LOGIC ───────────────────────────────────────
-
   Future<void> _handleRepeatOncePosition(Duration position) async {
-    // Only run when repeat-once is active and not yet triggered
     if (_repeatMode != SoniqRepeatMode.once || _songRepeatedOnce) {
       _prevPosition = position;
       return;
@@ -140,26 +156,20 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler {
       return;
     }
 
-    // "Near end"  = player has played more than 90% of the song
-    // "Near start" = position is within the first 3 seconds
     final nearEndThreshold = duration * 0.90;
     final wasNearEnd  = _prevPosition > nearEndThreshold;
     final isNearStart = position.inMilliseconds < 3000;
 
     if (wasNearEnd && isNearStart) {
-      // ── Song has completed its FIRST play and just auto-restarted ──
       _songRepeatedOnce = true;
       _repeatMode       = SoniqRepeatMode.none;
       await _player.setLoopMode(LoopMode.off);
       
-      // Notify audio_service so the UI updates the repeat icon
       _broadcastState(_player.playbackEvent);
     }
     
     _prevPosition = position;
   }
-
-  // ─── QUEUE MANAGEMENT ────────────────────────────────────────
 
   @override
   Future<void> updateQueue(List<MediaItem> newQueue) async {
@@ -176,7 +186,6 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler {
     final freshPlaylist = ConcatenatingAudioSource(children: audioSources);
     await _player.setAudioSource(freshPlaylist);
     
-    // Default fallback to keep standard queue active
     if (_player.loopMode != LoopMode.all && _repeatMode != SoniqRepeatMode.once) {
       await _player.setLoopMode(LoopMode.all);
       _repeatMode = SoniqRepeatMode.all;
@@ -199,8 +208,6 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler {
     }
   }
 
-  // ─── PLAYBACK CONTROLS ───────────────────────────────────────
-
   @override
   Future<void> play() => _player.play();
 
@@ -212,7 +219,6 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> skipToNext() async {
-    // Reset repeat-once state on manual skip
     if (_repeatMode == SoniqRepeatMode.once) {
       _repeatMode       = SoniqRepeatMode.none;
       _songRepeatedOnce = false;
@@ -223,7 +229,6 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> skipToPrevious() async {
-    // Reset repeat-once state on manual skip
     if (_repeatMode == SoniqRepeatMode.once) {
       _repeatMode       = SoniqRepeatMode.none;
       _songRepeatedOnce = false;
@@ -244,12 +249,11 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> setRepeatMode(AudioServiceRepeatMode repeatMode) async {
-    // Cycle through custom modes: none → once → all → none
     switch (_repeatMode) {
       case SoniqRepeatMode.none:
         _repeatMode       = SoniqRepeatMode.once;
         _songRepeatedOnce = false;
-        _prevPosition     = _player.position; // reset position tracking
+        _prevPosition     = _player.position; 
         await _player.setLoopMode(LoopMode.one);
         break;
       case SoniqRepeatMode.once:
@@ -266,7 +270,11 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler {
     _broadcastState(_player.playbackEvent);
   }
 
-  // ─── SYSTEM SYNC ─────────────────────────────────────────────
+  @override
+  Future<void> stop() async {
+    await _player.stop();
+    await super.stop();
+  }
 
   void _broadcastState(PlaybackEvent event) {
     final playing = _player.playing;
@@ -280,11 +288,11 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler {
       controls: [
         MediaControl.skipToPrevious,
         if (playing) MediaControl.pause else MediaControl.play,
-        MediaControl.stop,
         MediaControl.skipToNext,
+        _closeControl,
       ],
       systemActions: const {MediaAction.seek},
-      androidCompactActionIndices: const [0, 1, 3],
+      androidCompactActionIndices: const [0, 1, 2], // Prev, Play/Pause, Next
       processingState: const {
         ProcessingState.idle: AudioProcessingState.idle,
         ProcessingState.loading: AudioProcessingState.loading,
@@ -297,7 +305,6 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler {
       bufferedPosition: _player.bufferedPosition,
       speed: _player.speed,
       queueIndex: activeQueueIndex != -1 ? activeQueueIndex : event.currentIndex,
-      // Map our internal _repeatMode to AudioServiceRepeatMode for the UI
       repeatMode: switch (_repeatMode) {
         SoniqRepeatMode.none => AudioServiceRepeatMode.none,
         SoniqRepeatMode.once => AudioServiceRepeatMode.one,

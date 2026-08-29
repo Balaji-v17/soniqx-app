@@ -614,17 +614,24 @@ class LanguageDao extends DatabaseAccessor<AppDatabase> with _$LanguageDaoMixin 
     return await (select(languageTags)..where((t) => t.artistKey.equals(artistKey))).getSingleOrNull();
   }
 
-  Future<void> applyPendingCorrections() async {
+ Future<void> applyPendingCorrections() async {
     final allVotes = await customSelect(
       '''
+      WITH vote_counts AS (
+        SELECT 
+          artist_key,
+          corrected_language,
+          COUNT(*) as vote_count
+        FROM user_corrections
+        WHERE applied_to_seeds = 0
+        GROUP BY artist_key, corrected_language
+      )
       SELECT 
         artist_key,
         corrected_language,
-        COUNT(*) as vote_count,
-        SUM(COUNT(*) OVER (PARTITION BY artist_key)) as total_votes
-      FROM user_corrections
-      WHERE applied_to_seeds = 0
-      GROUP BY artist_key, corrected_language
+        vote_count,
+        SUM(vote_count) OVER (PARTITION BY artist_key) as total_votes
+      FROM vote_counts
       '''
       ,
       readsFrom: {userCorrections},
@@ -687,7 +694,6 @@ class LanguageDao extends DatabaseAccessor<AppDatabase> with _$LanguageDaoMixin 
     }
   }
 }
-
 @DriftAccessor(tables: [AppSettings, QueueState])
 class SettingsDao extends DatabaseAccessor<AppDatabase> with _$SettingsDaoMixin {
   SettingsDao(super.db);
