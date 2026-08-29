@@ -123,7 +123,7 @@ android {
             )
         }
         jniLibs {
-            useLegacyPackaging = true // 🎯 VERIFIED: Must remain false for uncompressed, memory-mapped native libraries
+            useLegacyPackaging = false 
         }
     }
 }
@@ -142,7 +142,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.media:media:1.7.0")
 
-    implementation("com.google.mlkit:language-id:17.0.+")
+    // Locked to strictly 16KB-ready binary
+    implementation("com.google.mlkit:language-id:17.0.6")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

@@ -14,7 +14,6 @@ import 'package:soniq/classifier/language_service.dart';
 import 'package:soniq/providers/auto_mix_provider.dart';
 import 'package:soniq/providers/library_filter_provider.dart';
 import 'package:soniq/ui/widgets/add_to_playlist_sheet.dart';
-import 'package:soniq/ui/widgets/manual_tag_sheet.dart';
 import 'package:soniq/ui/widgets/fallback_album_art.dart';
 import 'package:soniq/ui/widgets/alphabet_scrubber.dart';
 import 'package:flutter/material.dart';
@@ -347,7 +346,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-void _confirmDeleteTracks() {
+  void _confirmDeleteTracks() {
     final colorScheme = Theme.of(context).colorScheme;
     showDialog(
       context: context,
@@ -396,6 +395,7 @@ void _confirmDeleteTracks() {
       ),
     );
   }
+
   @override
   Widget build(BuildContext context) {
     final database = ref.watch(databaseProvider);
@@ -1389,11 +1389,16 @@ class _RecentVerticalTile extends ConsumerWidget {
                     color: colorScheme.surface,
                     onSelected: (value) {
                       if (value == 'add_to_playlist') AddToPlaylistSheet.show(context, song.id);
-                      if (value == 'edit_tag') Future.delayed(const Duration(milliseconds: 50), () => ManualTagSheet.show(context, song));
                     },
                     itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                      PopupMenuItem<String>(value: 'add_to_playlist', child: Row(children: [Icon(Icons.playlist_add, size: 20, color: colorScheme.onSurface), const SizedBox(width: 12), Text('Add to Playlist', style: TextStyle(color: colorScheme.onSurface))])),
-                      PopupMenuItem<String>(value: 'edit_tag', child: Row(children: [Icon(Icons.label_outline, size: 20, color: colorScheme.onSurface), const SizedBox(width: 12), Text('Edit Language Tag', style: TextStyle(color: colorScheme.onSurface))])),
+                      PopupMenuItem<String>(
+                        value: 'add_to_playlist', 
+                        child: Row(children: [
+                          Icon(Icons.playlist_add, size: 20, color: colorScheme.onSurface), 
+                          const SizedBox(width: 12), 
+                          Text('Add to Playlist', style: TextStyle(color: colorScheme.onSurface))
+                        ])
+                      ),
                     ],
                   ),
                 ],

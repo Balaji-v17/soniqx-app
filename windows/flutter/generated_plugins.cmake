@@ -3,10 +3,10 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
-  audiotags
   connectivity_plus
   dynamic_color
   firebase_core
+  flutter_media_metadata_plus
   permission_handler_windows
   share_plus
   url_launcher_windows

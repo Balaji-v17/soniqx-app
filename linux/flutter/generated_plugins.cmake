@@ -3,8 +3,8 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
-  audiotags
   dynamic_color
+  flutter_media_metadata_plus
   url_launcher_linux
 )
 

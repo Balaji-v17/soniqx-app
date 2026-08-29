@@ -1,25 +1,21 @@
 import 'dart:io';
 import 'dart:convert';
-import 'package:audiotags/audiotags.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:flutter_media_metadata_plus/flutter_media_metadata_plus.dart';
 
 class ArtworkExtractor {
-  /// Reads the MP3 file, extracts the embedded cover art, caches it, and returns the URI.
+  /// Reads the MP3 file, extracts the embedded cover art using OS-native 
+  /// 16KB-compliant tools, caches it, and returns the URI.
   static Future<Uri?> getArtUriFromPath(String path) async {
     try {
-      // 1. Read the ID3 tags directly from the physical file
-      final tag = await AudioTags.read(path);
-debugPrint('--- ARTWORK DEBUG ---');
-debugPrint('File: $path');
-debugPrint('Has Tags: ${tag != null}');
-debugPrint('Picture Count: ${tag?.pictures.length ?? 0}');
+      // 1. Read metadata using Android's native MediaMetadataRetriever (Safe from 16KB errors)
+      final metadata = await MetadataRetriever.fromFile(File(path));
+      final pictureBytes = metadata.albumArt;
       
-      if (tag != null && tag.pictures.isNotEmpty) {
-        final pictureBytes = tag.pictures.first.bytes;
-        
-        // 2. Hash the file path to create a unique, safe filename (e.g., d41d8cd98f.jpg)
+      if (pictureBytes != null && pictureBytes.isNotEmpty) {
+        // 2. Hash the file path to create a unique, safe filename
         final hash = md5.convert(utf8.encode(path)).toString();
         final tempDir = await getTemporaryDirectory();
         final artFile = File('${tempDir.path}/$hash.jpg');
