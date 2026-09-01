@@ -6,6 +6,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:audio_session/audio_session.dart';
 import 'package:soniq/audio/artwork_extractor.dart';
 import 'package:soniq/database/database.dart'; 
 import 'package:soniq/fallback_art_manager.dart';
@@ -41,12 +42,36 @@ class SoniqAudioHandler extends BaseAudioHandler with SeekHandler {
     final pipeline = AudioPipeline(
       androidAudioEffects: [_equalizer],
     );
-    _player = AudioPlayer(audioPipeline: pipeline);
+    _player = AudioPlayer(
+      audioPipeline: pipeline,
+      handleInterruptions: true,
+      handleAudioSessionActivation: true,
+    );
     
     _init();
   }
 
   Future<void> _init() async {
+    final session = await AudioSession.instance;
+    await session.configure(const AudioSessionConfiguration.music());
+
+    session.interruptionEventStream.listen((AudioInterruptionEvent event) {
+      if (event.begin) {
+        switch (event.type) {
+          case AudioInterruptionType.duck:
+            break;
+          case AudioInterruptionType.pause:
+          case AudioInterruptionType.unknown:
+            pause(); 
+            break;
+        }
+      }
+    });
+
+    session.becomingNoisyEventStream.listen((_) {
+      pause(); 
+    });
+
     playbackState.add(playbackState.value.copyWith(
       controls: [
         MediaControl.skipToPrevious, 
